@@ -2,7 +2,7 @@ import glfw
 from OpenGL.GL import *
 from OpenGL.GLU import *
 from OpenGL.GLUT import *
-from OpenGL.arrays import vbo
+from OpenGL.arrays.vbo import VBO
 from geometry_utils import *
 
 
@@ -111,8 +111,8 @@ class VertexBuffer:
 
         self.vn = np.stack([vec_normal(i) for i in range(v.size)])
         self.v, self.f = v,f
-        self.vbo = vbo.VBO(np.concatenate((v, self.vn)))
-        self.ibo = vbo.VBO(f, 'GL_STATIC_DRAW',
+        self.vbo = VBO(np.concatenate((v, self.vn)))
+        self.ibo = VBO(f, 'GL_STATIC_DRAW',
                            'GL_ELEMENT_ARRAY_BUFFER')
 
     def draw(self):

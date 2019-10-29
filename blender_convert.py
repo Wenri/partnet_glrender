@@ -8,7 +8,8 @@ import tempfile
 from urllib.request import urlopen, urljoin
 from html.parser import HTMLParser
 
-DATA_DIR = 'http://download.cs.stanford.edu/orion/partnet_dataset/data_v0/'
+#DATA_DIR = 'http://download.cs.stanford.edu/orion/partnet_dataset/data_v0/'
+DATA_DIR = 'file:///media/data/Datasets/PartNet/data_v0/'
 
 def load_json(im_id: int):
     d = {}
@@ -60,7 +61,7 @@ def download_id(obj_id, save_dir):
 
 
 def main():
-    save_dir = '/Users/wenri/Research/export'
+    save_dir = '/media/data/Research/partnet_export'
     list_file = os.path.join(save_dir, 'list.txt')
     with open(list_file) as lstfp:
         for line in lstfp:

@@ -12,5 +12,5 @@ def import_file(full_name, path):
     return mod
 
 
-cvt = import_file('cvt', '/Users/wenri/PycharmProjects/partnet_data/blender_convert.py')
+cvt = import_file('cvt', '/home/wenri/Git/partnet_dataset/blender_convert.py')
 cvt.main()
