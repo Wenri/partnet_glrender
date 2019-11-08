@@ -1,18 +1,13 @@
 import glfw
 from pyglet.gl import *
 from pywavefront import visualization
-
+import numpy as np
 
 class ShowObj:
     def __init__(self, scene):
-        # Initialize the library
-        if not glfw.init():
-            raise Exception('An error occurred')
-
         self.scene = scene
-
-    def __del__(self):
-        glfw.terminate()
+        self.rot_x = 0;
+        self.rot_y = 0;
 
     def perspective(self):
         glMatrixMode(GL_PROJECTION)
@@ -25,7 +20,7 @@ class ShowObj:
     def viewpoint(self):
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
-        gluLookAt(0.0, 2.0, 4.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
+        gluLookAt(0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
 
     def material(self):
         mat_specular = [1.0, 1.0, 1.0, 1.0]
@@ -65,7 +60,25 @@ class ShowObj:
 
         # glutSolidTeapot(1)
 
+    def mouse_button_fun(self, window, button, action, mods):
+        print(button)
+
+    def cursor_pos_fun(self, window, xpos, ypos):
+        pass
+
+    def scroll_fun(self, window, xoffset, yoffset):
+        glRotatef(xoffset, 0.0, 1.0, 0.0)
+        glRotatef(yoffset, 1.0, 0.0, 0.0)
+        m = (GLfloat * 16)()
+        glGetFloatv(GL_MODELVIEW_MATRIX, m)
+        m = np.ctypeslib.as_array(m).reshape((4, 4))
+        print()
+
     def show_obj(self):
+        # Initialize the library
+        if not glfw.init():
+            raise Exception('An error occurred')
+
         # Create a windowed mode window and its OpenGL context
         window = glfw.create_window(640, 480, "Hello World", None, None)
         if not window:
@@ -74,11 +87,16 @@ class ShowObj:
         # Make the window's context current
         glfw.make_context_current(window)
 
+        glfw.set_mouse_button_callback(window, self.mouse_button_fun)
+        glfw.set_cursor_pos_callback(window, self.cursor_pos_fun)
+        glfw.set_scroll_callback(window, self.scroll_fun)
+
+        self.perspective()
+        self.viewpoint()
+
         # Loop until the user closes the window
         while not glfw.window_should_close(window):
             # Render here, e.g. using pyOpenGL
-            self.perspective()
-            self.viewpoint()
             self.draw_model()
 
             # Swap front and back buffers
@@ -86,3 +104,5 @@ class ShowObj:
 
             # Poll for and process events
             glfw.wait_events()
+
+        glfw.terminate()
