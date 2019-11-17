@@ -3,11 +3,12 @@ from pyglet.gl import *
 from pywavefront import visualization
 import numpy as np
 
+
 class ShowObj:
     def __init__(self, scene):
         self.scene = scene
-        self.rot_x = 0;
-        self.rot_y = 0;
+        self.rot_x = 0
+        self.rot_y = 0
 
     def perspective(self):
         glMatrixMode(GL_PROJECTION)
@@ -20,7 +21,20 @@ class ShowObj:
     def viewpoint(self):
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
-        gluLookAt(0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
+
+        rx = np.radians(self.rot_x)
+        cosx, sinx = np.cos(rx), np.sin(rx)
+        mrotx = np.array([[cosx, 0, sinx],
+                          [0, 1, 0],
+                          [-sinx, 0, cosx]])
+        px, py, pz = mrotx @ np.array([0, 2, 4])
+        gluLookAt(px, py, pz, 0.0, 0.0, 0.0, 0, 1, 0)
+
+        m = (GLfloat * 16)()
+        glGetFloatv(GL_MODELVIEW_MATRIX, m)
+        m = np.ctypeslib.as_array(m).reshape((4, 4))
+        x, y, z, _ = m[0]
+        glRotatef(self.rot_y, x, y, z)
 
     def material(self):
         mat_specular = [1.0, 1.0, 1.0, 1.0]
@@ -67,12 +81,9 @@ class ShowObj:
         pass
 
     def scroll_fun(self, window, xoffset, yoffset):
-        glRotatef(xoffset, 0.0, 1.0, 0.0)
-        glRotatef(yoffset, 1.0, 0.0, 0.0)
-        m = (GLfloat * 16)()
-        glGetFloatv(GL_MODELVIEW_MATRIX, m)
-        m = np.ctypeslib.as_array(m).reshape((4, 4))
-        print()
+        self.rot_x += xoffset
+        self.rot_y += yoffset
+        print(self.rot_x, self.rot_y)
 
     def show_obj(self):
         # Initialize the library
@@ -92,10 +103,11 @@ class ShowObj:
         glfw.set_scroll_callback(window, self.scroll_fun)
 
         self.perspective()
-        self.viewpoint()
 
         # Loop until the user closes the window
         while not glfw.window_should_close(window):
+            self.viewpoint()
+
             # Render here, e.g. using pyOpenGL
             self.draw_model()
 

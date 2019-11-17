@@ -3,8 +3,8 @@ import numpy as np
 from pywavefront import Wavefront
 from showobj import ShowObj
 
-#DATA_DIR = '/media/data/Research/partnet_export'
-DATA_DIR = '/Users/wenri/Research/partnet_export'
+DATA_DIR = '/media/data/Research/partnet_export'
+#DATA_DIR = '/Users/wenri/Research/partnet_export'
 
 
 def main(im_id):
