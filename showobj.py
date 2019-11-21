@@ -1,28 +1,31 @@
 import glfw
 from pyglet.gl import *
-from pywavefront import visualization
+from pywavefront.visualization import draw_material
 import numpy as np
 
 
 class ShowObj:
     def __init__(self, scene):
         self.scene = scene
-        self.rot_x = 0
-        self.rot_y = 0
+        self.rot_angle = np.array((0.0, 0.0))
+        self.rot_angle_old = self.rot_angle
+        self.cur_pos_old = (0.0, 0.0)
+        self.cur_rot_mode = False
+        self.cur_name = 255
+        self.viewport = (GLint * 4)()
 
     def perspective(self):
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
-        viewport = (GLint * 4)()
-        glGetIntegerv(GL_VIEWPORT, viewport)
-        x, y, width, height = viewport
+        glGetIntegerv(GL_VIEWPORT, self.viewport)
+        x, y, width, height = self.viewport
         gluPerspective(45.0, width / height, 1, 10.0)
 
     def viewpoint(self):
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
 
-        rx = np.radians(self.rot_x)
+        rx = np.radians(self.rot_angle[0])
         cosx, sinx = np.cos(rx), np.sin(rx)
         mrotx = np.array([[cosx, 0, sinx],
                           [0, 1, 0],
@@ -34,7 +37,7 @@ class ShowObj:
         glGetFloatv(GL_MODELVIEW_MATRIX, m)
         m = np.ctypeslib.as_array(m).reshape((4, 4))
         x, y, z, _ = m[0]
-        glRotatef(self.rot_y, x, y, z)
+        glRotatef(self.rot_angle[1], x, y, z)
 
     def material(self):
         mat_specular = [1.0, 1.0, 1.0, 1.0]
@@ -64,26 +67,48 @@ class ShowObj:
         self.lighting()
         # self.material()
 
-        # glDepthFunc(GL_LESS)
-        # glEnable(GL_DEPTH_TEST)
+        glEnable(GL_DEPTH_TEST)
+        glDepthFunc(GL_LESS)
+
+        glEnable(GL_STENCIL_TEST)
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         # glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
 
-        visualization.draw(self.scene, lighting_enabled=True)
+        for idx, mesh in enumerate(self.scene.mesh_list):
+            glStencilFunc(GL_ALWAYS, idx, 0xFF)  # Set any stencil to 1
+            glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
+            glStencilMask(0xFF)  # Write to stencil buffer
+            for material in mesh.materials:
+                if idx == self.cur_name:
+                    material.ambient = [0.0, 1.0, 1.0, 1.0]
+                else:
+                    material.ambient = [1.0, 1.0, 1.0, 1.0]
+                draw_material(material)
 
         # glutSolidTeapot(1)
 
     def mouse_button_fun(self, window, button, action, mods):
-        print(button)
+        if button == 1:
+            self.cur_pos_old = glfw.get_cursor_pos(window)
+            self.cur_rot_mode = (action == 1)
+            self.rot_angle_old = self.rot_angle
 
     def cursor_pos_fun(self, window, xpos, ypos):
-        pass
+        if self.cur_rot_mode:
+            offset = np.array((xpos, ypos)) - self.cur_pos_old
+            offset[0] = -offset[0]
+            self.rot_angle = self.rot_angle_old + offset
+        else:
+            x, y, width, height = self.viewport
+            cbuf = (GLubyte * 1)()
+            glReadPixels(int(xpos), int(height - ypos), 1, 1,
+                         GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, cbuf)
+            self.cur_name, = cbuf
+            print(xpos, ypos, self.cur_name)
 
     def scroll_fun(self, window, xoffset, yoffset):
-        self.rot_x += xoffset
-        self.rot_y += yoffset
-        print(self.rot_x, self.rot_y)
+        self.rot_angle += np.array((xoffset, yoffset))
 
     def show_obj(self):
         # Initialize the library
