@@ -1,18 +1,23 @@
 import glfw
 from pyglet.gl import *
 from pywavefront.visualization import draw_material
+from pywavefront.wavefront import Wavefront
 import numpy as np
 
 
 class ShowObj:
-    def __init__(self, scene):
+    def __init__(self, scene: Wavefront):
         self.scene = scene
         self.rot_angle = np.array((0.0, 0.0))
         self.rot_angle_old = self.rot_angle
         self.cur_pos_old = (0.0, 0.0)
         self.cur_rot_mode = False
-        self.cur_name = 255
+        self.cur_sel_idx = (GLubyte * 1)(0xFF)
+        self.invalid_cur_idx = 0xFF
+        self.sel_set = set()
+        self.del_set = set()
         self.viewport = (GLint * 4)()
+        self.result = 0
 
     def perspective(self):
         glMatrixMode(GL_PROJECTION)
@@ -75,24 +80,33 @@ class ShowObj:
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         # glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
 
+        cur_idx, = self.cur_sel_idx
         for idx, mesh in enumerate(self.scene.mesh_list):
+            if idx in self.del_set:
+                continue
             glStencilFunc(GL_ALWAYS, idx, 0xFF)  # Set any stencil to 1
             glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
             glStencilMask(0xFF)  # Write to stencil buffer
             for material in mesh.materials:
-                if idx == self.cur_name:
+                material.ambient = [1.0, 1.0, 1.0, 1.0]
+                if idx == cur_idx and cur_idx != self.invalid_cur_idx:
                     material.ambient = [0.0, 1.0, 1.0, 1.0]
-                else:
-                    material.ambient = [1.0, 1.0, 1.0, 1.0]
+                elif idx in self.sel_set:
+                    material.ambient = [0.0, 0.0, 1.0, 1.0]
                 draw_material(material)
-
-        # glutSolidTeapot(1)
 
     def mouse_button_fun(self, window, button, action, mods):
         if button == 1:
             self.cur_pos_old = glfw.get_cursor_pos(window)
             self.cur_rot_mode = (action == 1)
             self.rot_angle_old = self.rot_angle
+        elif button == 0 and action == 1:
+            cur_idx, = self.cur_sel_idx
+            self.invalid_cur_idx = cur_idx
+            if cur_idx in self.sel_set:
+                self.sel_set.remove(cur_idx)
+            else:
+                self.sel_set.add(cur_idx)
 
     def cursor_pos_fun(self, window, xpos, ypos):
         if self.cur_rot_mode:
@@ -101,14 +115,27 @@ class ShowObj:
             self.rot_angle = self.rot_angle_old + offset
         else:
             x, y, width, height = self.viewport
-            cbuf = (GLubyte * 1)()
             glReadPixels(int(xpos), int(height - ypos), 1, 1,
-                         GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, cbuf)
-            self.cur_name, = cbuf
-            print(xpos, ypos, self.cur_name)
+                         GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, self.cur_sel_idx)
+            cur_idx, = self.cur_sel_idx
+            if self.invalid_cur_idx != cur_idx:
+                self.invalid_cur_idx = 0xFF
 
     def scroll_fun(self, window, xoffset, yoffset):
         self.rot_angle += np.array((xoffset, yoffset))
+
+    def key_fun(self, window, key, scancode, action, mods):
+        if key == glfw.KEY_D and action == glfw.PRESS:
+            self.del_set.update(self.sel_set)
+        if key == glfw.KEY_N and action == glfw.PRESS:
+            self.result = 1
+            glfw.set_window_should_close(window, GL_TRUE)
+        if key == glfw.KEY_P and action == glfw.PRESS:
+            self.result = 2
+            glfw.set_window_should_close(window, GL_TRUE)
+
+    def window_size_fun(self, window, width, height):
+        glViewport(0, 0, width, height)
 
     def show_obj(self):
         # Initialize the library
@@ -126,11 +153,14 @@ class ShowObj:
         glfw.set_mouse_button_callback(window, self.mouse_button_fun)
         glfw.set_cursor_pos_callback(window, self.cursor_pos_fun)
         glfw.set_scroll_callback(window, self.scroll_fun)
+        glfw.set_key_callback(window, self.key_fun)
+        glfw.set_window_size_callback(window, self.window_size_fun)
 
-        self.perspective()
+        glGetIntegerv(GL_VIEWPORT, self.viewport)
 
         # Loop until the user closes the window
         while not glfw.window_should_close(window):
+            self.perspective()
             self.viewpoint()
 
             # Render here, e.g. using pyOpenGL
