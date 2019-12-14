@@ -2,17 +2,13 @@ import os
 import numpy as np
 from pywavefront import Wavefront
 from showobj import ShowObj
-from dblist import dblist
-
-DATA_DIR = '/media/data/Research/partnet_export'
-#DATA_DIR = '/Users/wenri/Research/partnet_export'
-
+from dblist import dblist, conf
 
 def main(idx):
 
     while True:
         im_id = dblist[idx]
-        im_file = os.path.join(DATA_DIR, "{}.obj".format(im_id))
+        im_file = os.path.join(conf.data_dir, "{}.obj".format(im_id))
         scene = Wavefront(im_file)
         show = ShowObj(scene)
         show.show_obj()

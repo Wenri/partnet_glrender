@@ -80,11 +80,11 @@ class ShowObj:
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         # glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
 
-        cur_idx, = self.cur_sel_idx
+        cur_idx = self.get_cur_sel_idx()
         for idx, mesh in enumerate(self.scene.mesh_list):
             if idx in self.del_set:
                 continue
-            glStencilFunc(GL_ALWAYS, idx, 0xFF)  # Set any stencil to 1
+            glStencilFunc(GL_ALWAYS, idx+1, 0xFF)  # Set any stencil to 1
             glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
             glStencilMask(0xFF)  # Write to stencil buffer
             for material in mesh.materials:
@@ -95,13 +95,19 @@ class ShowObj:
                     material.ambient = [0.0, 0.0, 1.0, 1.0]
                 draw_material(material)
 
+    def get_cur_sel_idx(self):
+        cur_idx, = self.cur_sel_idx
+        if cur_idx == 0:
+            return 0xFF
+        return cur_idx - 1
+
     def mouse_button_fun(self, window, button, action, mods):
         if button == 1:
             self.cur_pos_old = glfw.get_cursor_pos(window)
             self.cur_rot_mode = (action == 1)
             self.rot_angle_old = self.rot_angle
         elif button == 0 and action == 1:
-            cur_idx, = self.cur_sel_idx
+            cur_idx = self.get_cur_sel_idx()
             self.invalid_cur_idx = cur_idx
             if cur_idx in self.sel_set:
                 self.sel_set.remove(cur_idx)
@@ -115,9 +121,9 @@ class ShowObj:
             self.rot_angle = self.rot_angle_old + offset
         else:
             x, y, width, height = self.viewport
-            glReadPixels(int(xpos), int(height - ypos), 1, 1,
+            glReadPixels(int(xpos * 2), int(height - ypos * 2), 1, 1,
                          GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, self.cur_sel_idx)
-            cur_idx, = self.cur_sel_idx
+            cur_idx = self.get_cur_sel_idx()
             if self.invalid_cur_idx != cur_idx:
                 self.invalid_cur_idx = 0xFF
 
@@ -127,11 +133,13 @@ class ShowObj:
     def key_fun(self, window, key, scancode, action, mods):
         if key == glfw.KEY_D and action == glfw.PRESS:
             self.del_set.update(self.sel_set)
-        if key == glfw.KEY_N and action == glfw.PRESS:
+        elif key == glfw.KEY_N and action == glfw.PRESS:
             self.result = 1
             glfw.set_window_should_close(window, GL_TRUE)
-        if key == glfw.KEY_P and action == glfw.PRESS:
+        elif key == glfw.KEY_P and action == glfw.PRESS:
             self.result = 2
+            glfw.set_window_should_close(window, GL_TRUE)
+        elif key == glfw.KEY_Q and action == glfw.PRESS:
             glfw.set_window_should_close(window, GL_TRUE)
 
     def window_size_fun(self, window, width, height):
@@ -143,7 +151,7 @@ class ShowObj:
             raise Exception('An error occurred')
 
         # Create a windowed mode window and its OpenGL context
-        window = glfw.create_window(640, 480, "Hello World", None, None)
+        window = glfw.create_window(1280, 800, "Hello World", None, None)
         if not window:
             raise Exception('An error occurred')
 

@@ -1,3 +1,10 @@
+import configparser
+from types import SimpleNamespace
+
+cfg = configparser.ConfigParser()
+cfg.read_file(open('config.cfg'))
+conf = SimpleNamespace(**cfg.defaults())
+
 dblist = [172, 173, 174, 176, 177, 178, 179, 180, 182, 183, 186, 187, 192, 197, 257, 262, 267, 272, 277, 278, 280, 285,
           286, 288, 308, 309, 311, 314, 315, 328, 331, 335, 338, 339, 340, 341, 342, 343, 344, 345, 347, 348, 349, 384,
           385, 423, 436, 454, 455, 456, 458, 459, 460, 461, 462, 463, 464, 465, 466, 468, 469, 470, 472, 476, 478, 479,
