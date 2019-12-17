@@ -94,7 +94,10 @@ class ShowObj:
                     material.ambient = [0.0, 1.0, 1.0, 1.0]
                 elif idx in self.sel_set:
                     material.ambient = [0.0, 0.0, 1.0, 1.0]
-                draw_material(material)
+                self.draw_material(material)
+
+    def draw_material(self, *args, **kwargs):
+        draw_material(*args, **kwargs)
 
     def get_cur_sel_idx(self):
         cur_idx, = self.cur_sel_idx
