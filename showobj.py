@@ -18,6 +18,7 @@ class ShowObj:
         self.del_set = set()
         self.viewport = (GLint * 4)()
         self.result = 0
+        self.scale = 1
 
     def perspective(self):
         glMatrixMode(GL_PROJECTION)
@@ -97,7 +98,7 @@ class ShowObj:
 
     def get_cur_sel_idx(self):
         cur_idx, = self.cur_sel_idx
-        if cur_idx == 0:
+        if cur_idx == 0 or cur_idx == 0xFF:
             return 0xFF
         return cur_idx - 1
 
@@ -121,7 +122,8 @@ class ShowObj:
             self.rot_angle = self.rot_angle_old + offset
         else:
             x, y, width, height = self.viewport
-            glReadPixels(int(xpos * 2), int(height - ypos * 2), 1, 1,
+            glReadPixels(int(xpos * self.scale),
+                         int(height - ypos * self.scale), 1, 1,
                          GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, self.cur_sel_idx)
             cur_idx = self.get_cur_sel_idx()
             if self.invalid_cur_idx != cur_idx:
@@ -131,16 +133,22 @@ class ShowObj:
         self.rot_angle += np.array((xoffset, yoffset))
 
     def key_fun(self, window, key, scancode, action, mods):
-        if key == glfw.KEY_D and action == glfw.PRESS:
-            self.del_set.update(self.sel_set)
-        elif key == glfw.KEY_N and action == glfw.PRESS:
-            self.result = 1
-            glfw.set_window_should_close(window, GL_TRUE)
-        elif key == glfw.KEY_P and action == glfw.PRESS:
-            self.result = 2
-            glfw.set_window_should_close(window, GL_TRUE)
-        elif key == glfw.KEY_Q and action == glfw.PRESS:
-            glfw.set_window_should_close(window, GL_TRUE)
+        if action == glfw.PRESS:
+            if key == glfw.KEY_D:
+                self.del_set.update(self.sel_set)
+            elif key == glfw.KEY_N:
+                self.result = 1
+                glfw.set_window_should_close(window, GL_TRUE)
+            elif key == glfw.KEY_P:
+                self.result = 2
+                glfw.set_window_should_close(window, GL_TRUE)
+            elif key == glfw.KEY_Q:
+                glfw.set_window_should_close(window, GL_TRUE)
+            elif key == glfw.KEY_SPACE:
+                cur_idx = self.get_cur_sel_idx()
+                if cur_idx == 0xff:
+                    return
+                self.do_part(cur_idx)
 
     def window_size_fun(self, window, width, height):
         glViewport(0, 0, width, height)
@@ -181,3 +189,6 @@ class ShowObj:
             glfw.wait_events()
 
         glfw.terminate()
+
+    def do_part(self, partid):
+        pass

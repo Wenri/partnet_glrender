@@ -1,5 +1,6 @@
 import os
 from pywavefront import Wavefront
+from pywavefront.mesh import Mesh
 from dblist import dblist, conf
 import numpy as np
 from numpy.linalg import norm
@@ -7,6 +8,8 @@ from sklearn.cluster import SpectralClustering
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.manifold import TSNE
 from matplotlib import pyplot as plt
+from showobj import ShowObj
+from threading import Thread
 
 
 def get_normal_cls(vertices):
@@ -39,13 +42,32 @@ def normal_cls_functor(pixel_format):
     return pixel_normal[pixel_format]
 
 
-def main(idx):
-    im_id = dblist[idx]
-    im_file = os.path.join(conf.data_dir, "{}.obj".format(im_id))
-    scene = Wavefront(im_file)
-    for mtl in scene.materials.values():
+def analysis(mesh: Mesh):
+    print('analysis mesh: %s' % mesh.name)
+    for mtl in mesh.materials:
         normal_cls_functor(mtl.vertex_format)(mtl.vertices)
 
 
+def main(idx):
+    class ClsObj(ShowObj):
+        def do_part(self, partid):
+            mesh = self.scene.mesh_list[partid]
+            t = Thread(target=analysis, args=(mesh,), daemon=True)
+            t.start()
+
+    while True:
+        im_id = dblist[idx]
+        im_file = os.path.join(conf.data_dir, "{}.obj".format(im_id))
+        scene = Wavefront(im_file)
+        show = ClsObj(scene)
+        show.show_obj()
+        if show.result == 1:
+            idx = min(idx+1, len(dblist)-1)
+        elif show.result == 2:
+            idx = max(0, idx-1)
+        else:
+            break
+
+
 if __name__ == '__main__':
-    main(2)
+    main(0)
