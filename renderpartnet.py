@@ -6,9 +6,8 @@ from pywavefront.mesh import Mesh
 from pywavefront.material import Material
 from dblist import dblist, conf
 import numpy as np
-from numpy.linalg import norm
 from sklearn.preprocessing import normalize
-from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
+from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.manifold import spectral_embedding
 from sklearn.cluster import k_means
 from matplotlib import pyplot as plt
@@ -27,7 +26,7 @@ class Timer(object):
 
     def __exit__(self, type, value, traceback):
         if self.name:
-            print('[%s]' % self.name, )
+            print('[%s]' % self.name,)
         print('Elapsed: %s' % (time.time() - self.tstart))
 
 
@@ -47,20 +46,16 @@ def get_normal_cls(vertices):
         centers, labels, _ = k_means(embedding, n_clusters=3)
 
     ret = [np.count_nonzero(labels == i) for i in range(3)]
-    max_lbl_id = np.argmax(ret)
     ret.sort(reverse=True)
+
     print('\t'.join(str(s) for s in ret))
     print(centers)
     # plt.figure()
     # plt.scatter(embedding[:, 1], embedding[:, 2], c=labels)
     # plt.show()
 
-    dist = euclidean_distances(embedding, centers)
-    min_norm_ids = np.argmin(dist, axis=0)
-    best_norm_id = min_norm_ids[max_lbl_id]
-
     labels = np.repeat(labels, 3)
-    return a, labels, embedding, n3f[best_norm_id]
+    return a, labels, embedding
 
 
 def normal_cls_functor(pixel_format):
@@ -74,12 +69,11 @@ class BkThread(Thread):
     def __init__(self, mesh_list):
         self.mesh_list = mesh_list
         self.lock_list = [Lock() for i in range(len(mesh_list))]
-        self.result_list = [None for i in range(len(mesh_list))]
         self.can_exit = False
         super().__init__()
 
     def change_mtl(self, idx, material: Material):
-        a, labels, embedding, norm = normal_cls_functor(material.vertex_format)(material.vertices)
+        a, labels, embedding = normal_cls_functor(material.vertex_format)(material.vertices)
         nvtx, _ = a.shape
 
         self.lock_list[idx].acquire(blocking=True)
@@ -94,8 +88,6 @@ class BkThread(Thread):
 
         self.lock_list[idx].release()
 
-        self.result_list[idx] = norm
-
     def run(self):
         for idx, mesh in enumerate(self.mesh_list):
             print('analysis mesh: %s' % mesh.name)
@@ -103,6 +95,7 @@ class BkThread(Thread):
                 if self.can_exit:
                     return
                 self.change_mtl(idx, mtl)
+
 
 
 class ClsObj(ShowObj):
@@ -124,35 +117,7 @@ class ClsObj(ShowObj):
 
     def do_part(self, partid):
         mesh = self.scene.mesh_list[partid]
-        vv = self.bkt.result_list[partid]
-        # vv = np.array([1, 1, 1], dtype=np.float32)
-        vv /= norm(vv)
-        vx, vy, vz = vv
-        rx, ry, rz = self.initial_look_at / norm(self.initial_look_at)
-        print('\t'.join(
-            "{}({}): ".format(mtl.name, mtl.vertex_format) for mtl in mesh.materials
-        ), "{} {} {} ".format(vx, vy, vz), end='')
-        if vx ** 2 + vz ** 2 > 0.01:
-            cos_x = vx * rx + vz * rz
-            rot_x = np.arccos(cos_x)
-            _, dir_x, _ = np.cross([vx, 0, vz], [rx, 0, rz])
-            if dir_x > 0:
-                rot_x = 2 * np.pi - rot_x
-        else:
-            rot_x = 0
-        cosx, sinx = np.cos(rot_x), np.sin(rot_x)
-        mrotx = np.array([[cosx, 0, sinx],
-                          [0, 1, 0],
-                          [-sinx, 0, cosx]])
-        rv = mrotx @ np.array([rx, ry, rz])
-        rot_y = np.arccos(np.dot(rv, vv))
-        x_x, _, x_z = np.cross(rv, vv)
-        _, dir_y, _ = np.cross([x_x, 0, x_z], [rx, 0, rz])
-        if dir_y > 0:
-            rot_y = - rot_y
-        self.rot_angle[0] = np.rad2deg(rot_x)
-        self.rot_angle[1] = np.rad2deg(rot_y)
-        print(self.rot_angle)
+        print('\t'.join("%s(%s)" % (mtl.name, mtl.vertex_format) for mtl in mesh.materials))
 
     def draw_material(self, idx, material, face=GL_FRONT_AND_BACK, lighting_enabled=True, textures_enabled=True):
         """Draw a single material"""
@@ -195,7 +160,6 @@ class ClsObj(ShowObj):
 
         glPopAttrib()
         glPopClientAttrib()
-
 
 def main(idx):
     while True:

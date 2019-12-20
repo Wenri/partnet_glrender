@@ -8,7 +8,7 @@ import numpy as np
 class ShowObj:
     def __init__(self, scene: Wavefront):
         self.scene = scene
-        self.rot_angle = np.array((0.0, 0.0))
+        self.rot_angle = np.array((0.0, 0.0), dtype=np.float32)
         self.rot_angle_old = self.rot_angle
         self.cur_pos_old = (0.0, 0.0)
         self.cur_rot_mode = False
@@ -19,6 +19,8 @@ class ShowObj:
         self.viewport = (GLint * 4)()
         self.result = 0
         self.scale = 1
+        self.initial_look_at = np.array((0, 0, 4), dtype=np.float32)
+        self.up_vector = np.array((0, 1, 0), dtype=np.float32)
 
     def perspective(self):
         glMatrixMode(GL_PROJECTION)
@@ -31,18 +33,17 @@ class ShowObj:
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
 
-        rx = np.radians(self.rot_angle[0])
-        cosx, sinx = np.cos(rx), np.sin(rx)
+        rot_x = np.radians(self.rot_angle[0])
+        cosx, sinx = np.cos(rot_x), np.sin(rot_x)
         mrotx = np.array([[cosx, 0, sinx],
                           [0, 1, 0],
                           [-sinx, 0, cosx]])
-        px, py, pz = mrotx @ np.array([0, 2, 4])
-        gluLookAt(px, py, pz, 0.0, 0.0, 0.0, 0, 1, 0)
+        pv = mrotx @ self.initial_look_at
+        px, py, pz = pv
+        ux, uy, uz = self.up_vector
+        gluLookAt(px, py, pz, 0.0, 0.0, 0.0, ux, uy, uz)
 
-        m = (GLfloat * 16)()
-        glGetFloatv(GL_MODELVIEW_MATRIX, m)
-        m = np.ctypeslib.as_array(m).reshape((4, 4))
-        x, y, z, _ = m[0]
+        x, y, z = np.cross(pv, self.up_vector)
         glRotatef(self.rot_angle[1], x, y, z)
 
     def material(self):
@@ -121,8 +122,7 @@ class ShowObj:
     def cursor_pos_fun(self, window, xpos, ypos):
         if self.cur_rot_mode:
             offset = np.array((xpos, ypos)) - self.cur_pos_old
-            offset[0] = -offset[0]
-            self.rot_angle = self.rot_angle_old + offset
+            self.rot_angle = self.rot_angle_old - offset
         else:
             x, y, width, height = self.viewport
             glReadPixels(int(xpos * self.scale),

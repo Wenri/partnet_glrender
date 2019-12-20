@@ -5,8 +5,8 @@ import io
 import json
 import tempfile
 
-from urllib.request import urlopen, urljoin
-from html.parser import HTMLParser
+from urllib.request import urlopen
+from urllib.parse import urljoin
 
 #DATA_DIR = 'http://download.cs.stanford.edu/orion/partnet_dataset/data_v0/'
 DATA_DIR = 'file:///media/data/Datasets/PartNet/data_v0/'
