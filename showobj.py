@@ -18,7 +18,7 @@ class ShowObj:
         self.del_set = set()
         self.viewport = (GLint * 4)()
         self.result = 0
-        self.scale = 1
+        self.scale = 2
         self.initial_look_at = np.array((0, 0, 4), dtype=np.float32)
         self.up_vector = np.array((0, 1, 0), dtype=np.float32)
 

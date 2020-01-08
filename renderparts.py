@@ -16,6 +16,7 @@ from showobj import ShowObj
 from threading import Thread, Lock
 from pyglet.gl import *
 from pywavefront.visualization import gl_light
+import glfw
 
 
 class Timer(object):
@@ -71,11 +72,12 @@ def normal_cls_functor(pixel_format):
 
 
 class BkThread(Thread):
-    def __init__(self, mesh_list):
+    def __init__(self, mesh_list, callback):
         self.mesh_list = mesh_list
         self.lock_list = [Lock() for i in range(len(mesh_list))]
         self.result_list = [None for i in range(len(mesh_list))]
         self.can_exit = False
+        self.callback = callback
         super().__init__()
 
     def change_mtl(self, idx, material: Material):
@@ -103,6 +105,7 @@ class BkThread(Thread):
                 if self.can_exit:
                     return
                 self.change_mtl(idx, mtl)
+            #self.callback()
 
 
 class ClsObj(ShowObj):
@@ -118,7 +121,7 @@ class ClsObj(ShowObj):
     }
 
     def __init__(self, scene: Wavefront):
-        self.bkt = BkThread(scene.mesh_list)
+        self.bkt = BkThread(scene.mesh_list, glfw.post_empty_event)
         self.bkt.start()
         super().__init__(scene)
 
