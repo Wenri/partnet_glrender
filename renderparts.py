@@ -4,7 +4,7 @@ import time
 from pywavefront import Wavefront
 from pywavefront.mesh import Mesh
 from pywavefront.material import Material
-from dblist import dblist, conf
+from dblist import dblist, conf, idname
 import numpy as np
 from numpy.linalg import norm
 from sklearn.preprocessing import normalize
@@ -16,6 +16,7 @@ from showobj import ShowObj
 from threading import Thread, Lock
 from pyglet.gl import *
 from pywavefront.visualization import gl_light
+from collections import defaultdict
 import glfw
 
 
@@ -71,8 +72,18 @@ def normal_cls_functor(pixel_format):
     return pixel_normal[pixel_format]
 
 
+def mtl_name_to_cls(name: str):
+    prefix = 'Default_OBJ'
+    assert name.startswith(prefix)
+    ext = name[len(prefix):]
+    id = int(ext.lstrip('.')) if ext else 0
+    return idname[id]
+
+
 class BkThread(Thread):
-    def __init__(self, mesh_list, callback):
+    def __init__(self, mesh_list, grp_set: set, callback=None):
+        self.grp_set = grp_set
+        self.grp_dict = defaultdict(list)
         self.mesh_list = mesh_list
         self.lock_list = [Lock() for i in range(len(mesh_list))]
         self.result_list = [None for i in range(len(mesh_list))]
@@ -80,8 +91,16 @@ class BkThread(Thread):
         self.callback = callback
         super().__init__()
 
-    def change_mtl(self, idx, material: Material):
-        a, labels, embedding, norm = normal_cls_functor(material.vertex_format)(material.vertices)
+    def do_cluster(self, mtl_id_list):
+        _, mtl = mtl_id_list[0]
+        vertices = mtl.vertices
+        vertex_format = mtl.vertex_format
+        for _, material in mtl_id_list[1:]:
+            assert vertex_format == material.vertex_format
+            vertices += material.vertices
+        return normal_cls_functor(vertex_format)(vertices)
+
+    def change_mtl(self, idx, material: Material, a, labels):
         nvtx, _ = a.shape
 
         self.lock_list[idx].acquire(blocking=True)
@@ -98,14 +117,35 @@ class BkThread(Thread):
 
         self.result_list[idx] = norm
 
-    def run(self):
+    def add_to_dict(self):
         for idx, mesh in enumerate(self.mesh_list):
             print('analysis mesh: %s' % mesh.name)
             for mtl in mesh.materials:
-                if self.can_exit:
-                    return
-                self.change_mtl(idx, mtl)
-            #self.callback()
+                cls_name, file_name = mtl_name_to_cls(mtl.name)
+                assert os.path.splitext(file_name)[0] == mesh.name
+                cls_name = str(cls_name).strip()
+                while cls_name:
+                    if cls_name in self.grp_set:
+                        self.grp_dict[cls_name].append((idx, mtl))
+                        print('Adding to ' + cls_name)
+                        break
+                    strindex = cls_name.rindex('/')
+                    cls_name = cls_name[:strindex]
+
+    def run(self):
+        self.add_to_dict()
+
+        if self.can_exit:
+            return
+
+        for cls_name, mtl_id_list in self.grp_dict.items():
+            a, labels, embedding, norm = self.do_cluster(mtl_id_list)
+            for idx, mtl in mtl_id_list:
+                self.change_mtl(idx, mtl, a, labels)
+            if callable(self.callback):
+                self.callback()
+            if self.can_exit:
+                return
 
 
 class ClsObj(ShowObj):
@@ -120,9 +160,8 @@ class ClsObj(ShowObj):
         'T2F_C4F_N3F_V3F': GL_T2F_C4F_N3F_V3F,
     }
 
-    def __init__(self, scene: Wavefront):
-        self.bkt = BkThread(scene.mesh_list, glfw.post_empty_event)
-        self.bkt.start()
+    def __init__(self, scene: Wavefront, grp_set: set):
+        self.bkt = BkThread(scene.mesh_list, grp_set, glfw.post_empty_event)
         super().__init__(scene)
 
     def do_part(self, partid):
@@ -199,13 +238,24 @@ class ClsObj(ShowObj):
         glPopAttrib()
         glPopClientAttrib()
 
+    def window_load(self, window):
+        self.bkt.start()
+
 
 def main(idx):
+    grouping_txt = os.path.join(conf.data_dir, 'grouping.txt')
+    grouping_set = set()
+    with open(grouping_txt, 'r') as fgrp:
+        for line in fgrp:
+            line_s = line.strip()
+            if line_s:
+                grouping_set.add(line_s)
+
     while True:
         im_id = dblist[idx]
         im_file = os.path.join(conf.data_dir, "{}.obj".format(im_id))
         scene = Wavefront(im_file)
-        show = ClsObj(scene)
+        show = ClsObj(scene, grouping_set)
         show.show_obj()
         if show.result == 1:
             idx = min(idx + 1, len(dblist) - 1)

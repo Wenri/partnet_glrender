@@ -156,6 +156,9 @@ class ShowObj:
     def window_size_fun(self, window, width, height):
         glViewport(0, 0, width, height)
 
+    def window_load(self, window):
+        pass
+
     def show_obj(self):
         # Initialize the library
         if not glfw.init():
@@ -177,6 +180,7 @@ class ShowObj:
 
         glGetIntegerv(GL_VIEWPORT, self.viewport)
 
+        self.window_load(window)
         # Loop until the user closes the window
         while not glfw.window_should_close(window):
             self.perspective()
