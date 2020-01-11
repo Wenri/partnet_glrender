@@ -18,9 +18,10 @@ def init_dblist():
 
 def init_idname():
     idfile = os.path.join(conf.data_dir, 'idname.txt')
-    if not os.path.exists(idfile):
-        return []
     idlist = []
+    if not os.path.exists(idfile):
+        return idlist
+
     total = 0
     with open(idfile) as f:
         for line in f:
@@ -29,7 +30,7 @@ def init_idname():
                 continue
             id, cls, file_path = line_s.split('\t')
             assert total == int(id)
-            idlist.append((cls, os.path.basename(file_path)))
+            idlist.append((cls.strip(), os.path.basename(file_path.strip())))
             total += 1
     return idlist
 

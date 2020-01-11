@@ -73,9 +73,8 @@ def normal_cls_functor(pixel_format):
 
 
 def mtl_name_to_cls(name: str):
-    prefix = 'Default_OBJ'
-    assert name.startswith(prefix)
-    ext = name[len(prefix):]
+    prefix, ext = os.path.splitext(name)
+    assert prefix == 'Default_OBJ'
     id = int(ext.lstrip('.')) if ext else 0
     return idname[id]
 
@@ -122,7 +121,9 @@ class BkThread(Thread):
             print('analysis mesh: %s' % mesh.name)
             for mtl in mesh.materials:
                 cls_name, file_name = mtl_name_to_cls(mtl.name)
-                assert os.path.splitext(file_name)[0] == mesh.name
+                file_name, _ = os.path.splitext(file_name)
+                mesh_name, _ = os.path.splitext(mesh.name)
+                assert mesh_name == file_name
                 cls_name = str(cls_name).strip()
                 while cls_name:
                     if cls_name in self.grp_set:
