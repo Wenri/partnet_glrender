@@ -4,7 +4,7 @@ import time
 from pywavefront import Wavefront
 from pywavefront.mesh import Mesh
 from pywavefront.material import Material
-from dblist import dblist, conf, idname
+from cfgreader import conf
 import numpy as np
 from numpy.linalg import norm
 from showobj import ShowObj
@@ -110,19 +110,12 @@ class ClsObj(ShowObj):
 
 
 def main(idx):
-    grouping_txt = os.path.join(conf.data_dir, 'grouping.txt')
-    grouping_set = set()
-    with open(grouping_txt, 'r') as fgrp:
-        for line in fgrp:
-            line_s = line.strip()
-            if line_s:
-                grouping_set.add(line_s)
-
+    dblist=conf.read_dblist()
     while True:
         im_id = dblist[idx]
         im_file = os.path.join(conf.data_dir, "{}.obj".format(im_id))
         scene = Wavefront(im_file)
-        show = ClsObj(scene, grouping_set)
+        show = ClsObj(scene, conf.read_groupset())
         show.show_obj()
         if show.result == 1:
             idx = min(idx + 1, len(dblist) - 1)

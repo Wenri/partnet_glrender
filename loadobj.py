@@ -2,10 +2,10 @@ import os
 import numpy as np
 from pywavefront import Wavefront
 from showobj import ShowObj
-from dblist import dblist, conf
+from cfgreader import conf
 
 def main(idx):
-
+    dblist=conf.read_dblist()
     while True:
         im_id = dblist[idx]
         im_file = os.path.join(conf.data_dir, "{}.obj".format(im_id))

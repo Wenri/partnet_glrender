@@ -4,7 +4,7 @@ import time
 from pywavefront import Wavefront
 from pywavefront.mesh import Mesh
 from pywavefront.material import Material
-from dblist import dblist, conf, idname
+from cfgreader import conf
 import numpy as np
 from numpy.linalg import norm
 from sklearn.preprocessing import normalize
@@ -70,13 +70,6 @@ def normal_cls_functor(pixel_format):
     return pixel_normal[pixel_format]
 
 
-def mtl_name_to_cls(name: str):
-    prefix, ext = os.path.splitext(name)
-    assert prefix == 'Default_OBJ'
-    id = int(ext.lstrip('.')) if ext else 0
-    return idname[id]
-
-
 class BkThread(Thread):
     def __init__(self, mesh_list, grp_set: set, callback=None):
         self.grp_set = grp_set
@@ -118,7 +111,7 @@ class BkThread(Thread):
         for idx, mesh in enumerate(self.mesh_list):
             print('analysis mesh: %s' % mesh.name)
             for mtl in mesh.materials:
-                cls_name, file_name = mtl_name_to_cls(mtl.name)
+                cls_name, file_name = conf.mtl_name_to_cls(mtl.name)
                 file_name, _ = os.path.splitext(file_name)
                 mesh_name, _ = os.path.splitext(mesh.name)
                 assert mesh_name == file_name
@@ -212,6 +205,7 @@ class ClsObj(ShowObj):
 
 
 def main(idx):
+    dblist = conf.read_dblist()
     while True:
         im_id = dblist[idx]
         im_file = os.path.join(conf.data_dir, "{}.obj".format(im_id))
