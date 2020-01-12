@@ -4,17 +4,18 @@ import time
 from pywavefront import Wavefront
 from pywavefront.mesh import Mesh
 from pywavefront.material import Material
-from dblist import dblist, conf
+from dblist import dblist, conf, idname
 import numpy as np
+from numpy.linalg import norm
 from sklearn.preprocessing import normalize
-from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
 from sklearn.manifold import spectral_embedding
 from sklearn.cluster import k_means
-from matplotlib import pyplot as plt
 from showobj import ShowObj
 from threading import Thread, Lock
 from pyglet.gl import *
 from pywavefront.visualization import gl_light
+from collections import defaultdict
 
 
 class Timer(object):
@@ -26,7 +27,7 @@ class Timer(object):
 
     def __exit__(self, type, value, traceback):
         if self.name:
-            print('[%s]' % self.name,)
+            print('[%s]' % self.name, )
         print('Elapsed: %s' % (time.time() - self.tstart))
 
 
@@ -46,16 +47,20 @@ def get_normal_cls(vertices):
         centers, labels, _ = k_means(embedding, n_clusters=3)
 
     ret = [np.count_nonzero(labels == i) for i in range(3)]
+    max_lbl_id = np.argmax(ret)
     ret.sort(reverse=True)
-
     print('\t'.join(str(s) for s in ret))
     print(centers)
     # plt.figure()
     # plt.scatter(embedding[:, 1], embedding[:, 2], c=labels)
     # plt.show()
 
+    dist = euclidean_distances(embedding, centers)
+    min_norm_ids = np.argmin(dist, axis=0)
+    best_norm_id = min_norm_ids[max_lbl_id]
+
     labels = np.repeat(labels, 3)
-    return a, labels, embedding
+    return a, labels, embedding, n3f[best_norm_id]
 
 
 def normal_cls_functor(pixel_format):
@@ -65,15 +70,34 @@ def normal_cls_functor(pixel_format):
     return pixel_normal[pixel_format]
 
 
+def mtl_name_to_cls(name: str):
+    prefix, ext = os.path.splitext(name)
+    assert prefix == 'Default_OBJ'
+    id = int(ext.lstrip('.')) if ext else 0
+    return idname[id]
+
+
 class BkThread(Thread):
-    def __init__(self, mesh_list):
+    def __init__(self, mesh_list, grp_set: set, callback=None):
+        self.grp_set = grp_set
+        self.grp_dict = defaultdict(list)
         self.mesh_list = mesh_list
         self.lock_list = [Lock() for i in range(len(mesh_list))]
+        self.result_list = [None for i in range(len(mesh_list))]
         self.can_exit = False
+        self.callback = callback
         super().__init__()
 
-    def change_mtl(self, idx, material: Material):
-        a, labels, embedding = normal_cls_functor(material.vertex_format)(material.vertices)
+    def do_cluster(self, mtl_id_list):
+        _, mtl = mtl_id_list[0]
+        vertices = mtl.vertices
+        vertex_format = mtl.vertex_format
+        for _, material in mtl_id_list[1:]:
+            assert vertex_format == material.vertex_format
+            vertices += material.vertices
+        return normal_cls_functor(vertex_format)(vertices)
+
+    def change_mtl(self, idx, material: Material, a, labels):
         nvtx, _ = a.shape
 
         self.lock_list[idx].acquire(blocking=True)
@@ -88,14 +112,39 @@ class BkThread(Thread):
 
         self.lock_list[idx].release()
 
-    def run(self):
+        self.result_list[idx] = norm
+
+    def add_to_dict(self):
         for idx, mesh in enumerate(self.mesh_list):
             print('analysis mesh: %s' % mesh.name)
             for mtl in mesh.materials:
-                if self.can_exit:
-                    return
-                self.change_mtl(idx, mtl)
+                cls_name, file_name = mtl_name_to_cls(mtl.name)
+                file_name, _ = os.path.splitext(file_name)
+                mesh_name, _ = os.path.splitext(mesh.name)
+                assert mesh_name == file_name
+                cls_name = str(cls_name).strip()
+                while cls_name:
+                    if cls_name in self.grp_set:
+                        self.grp_dict[cls_name].append((idx, mtl))
+                        print('Adding to ' + cls_name)
+                        break
+                    strindex = cls_name.rindex('/')
+                    cls_name = cls_name[:strindex]
 
+    def run(self):
+        self.add_to_dict()
+
+        if self.can_exit:
+            return
+
+        for cls_name, mtl_id_list in self.grp_dict.items():
+            a, labels, embedding, norm = self.do_cluster(mtl_id_list)
+            for idx, mtl in mtl_id_list:
+                self.change_mtl(idx, mtl, a, labels)
+            if callable(self.callback):
+                self.callback()
+            if self.can_exit:
+                return
 
 
 class ClsObj(ShowObj):
@@ -160,6 +209,7 @@ class ClsObj(ShowObj):
 
         glPopAttrib()
         glPopClientAttrib()
+
 
 def main(idx):
     while True:
