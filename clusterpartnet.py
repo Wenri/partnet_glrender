@@ -71,15 +71,14 @@ def normal_cls_functor(pixel_format):
 
 
 class BkThread(Thread):
-    def __init__(self, mesh_list, grp_set: set, callback=None):
-        self.grp_set = grp_set
+    def __init__(self, mesh_list, callback=None):
         self.grp_dict = defaultdict(list)
         self.mesh_list = mesh_list
         self.lock_list = [Lock() for i in range(len(mesh_list))]
         self.result_list = [None for i in range(len(mesh_list))]
         self.can_exit = False
         self.callback = callback
-        super().__init__()
+        super().__init__(daemon=True)
 
     def do_cluster(self, mtl_id_list):
         _, mtl = mtl_id_list[0]
@@ -117,7 +116,7 @@ class BkThread(Thread):
                 assert mesh_name == file_name
                 cls_name = str(cls_name).strip()
                 while cls_name:
-                    if cls_name in self.grp_set:
+                    if cls_name in conf.groupset:
                         self.grp_dict[cls_name].append((idx, mtl))
                         print('Adding to ' + cls_name)
                         break
@@ -135,7 +134,10 @@ class BkThread(Thread):
             for idx, mtl in mtl_id_list:
                 self.change_mtl(idx, mtl, a, labels)
             if callable(self.callback):
-                self.callback()
+                self.callback(cls_name=cls_name,
+                              idlist=np.fromiter((idx for idx, mtl in mtl_id_list),
+                                                 dtype=np.int, count=len(mtl_id_list)),
+                              a=a, labels=labels, embedding=embedding, norm=norm)
             if self.can_exit:
                 return
 
@@ -154,7 +156,6 @@ class ClsObj(ShowObj):
 
     def __init__(self, scene: Wavefront):
         self.bkt = BkThread(scene.mesh_list)
-        self.bkt.start()
         super().__init__(scene)
 
     def do_part(self, partid):
@@ -203,24 +204,33 @@ class ClsObj(ShowObj):
         glPopAttrib()
         glPopClientAttrib()
 
+    def window_load(self, window):
+        self.bkt.start()
+
+
+def save_data(im_id: str):
+    print('Init saving: %s' % im_id)
+
+    def do_save(*args, cls_name: str, **kwargs):
+        save_dir = os.path.join(conf.render_dir, im_id)
+        os.makedirs(save_dir, exist_ok=True)
+        save_file = os.path.join(save_dir, '{}.npz'.format(cls_name.replace('/', '-')))
+        np.savez(save_file, *args, **kwargs)
+
+    return do_save
+
 
 def main(idx):
-    dblist = conf.read_dblist()
+    dblist = conf.dblist
     while True:
         im_id = dblist[idx]
         im_file = os.path.join(conf.data_dir, "{}.obj".format(im_id))
         scene = Wavefront(im_file)
-        show = ClsObj(scene)
-        show.show_obj()
-        if show.result == 1:
-            idx = min(idx + 1, len(dblist) - 1)
-        elif show.result == 2:
-            idx = max(0, idx - 1)
-        else:
-            break
-        show.bkt.can_exit = True
-        show.bkt.join()
+        bkt = BkThread(scene.mesh_list, save_data(im_id))
+        bkt.start()
+        idx = min(idx + 1, len(dblist) - 1)
+        bkt.join()
 
 
 if __name__ == '__main__':
-    main(0)
+    main(50)

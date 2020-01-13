@@ -27,8 +27,11 @@ class ClsObj(ShowObj):
         'T2F_C4F_N3F_V3F': GL_T2F_C4F_N3F_V3F,
     }
 
-    def __init__(self, scene: Wavefront, grp_set: set):
-        self.bkt = BkThread(scene.mesh_list, grp_set, glfw.post_empty_event)
+    def __call__(self, *args, **kwargs):
+        glfw.post_empty_event()
+
+    def __init__(self, scene: Wavefront):
+        self.bkt = BkThread(scene.mesh_list, self)
         super().__init__(scene)
 
     def do_part(self, partid):
@@ -110,12 +113,12 @@ class ClsObj(ShowObj):
 
 
 def main(idx):
-    dblist=conf.read_dblist()
+    dblist = conf.dblist
     while True:
         im_id = dblist[idx]
         im_file = os.path.join(conf.data_dir, "{}.obj".format(im_id))
         scene = Wavefront(im_file)
-        show = ClsObj(scene, conf.read_groupset())
+        show = ClsObj(scene)
         show.show_obj()
         if show.result == 1:
             idx = min(idx + 1, len(dblist) - 1)
