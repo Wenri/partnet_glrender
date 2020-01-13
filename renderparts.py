@@ -111,6 +111,11 @@ class ClsObj(ShowObj):
     def window_load(self, window):
         self.bkt.start()
 
+    def show_obj(self):
+        super().show_obj()
+        self.bkt.can_exit = True
+        self.bkt.join()
+
 
 def main(idx):
     dblist = conf.dblist
@@ -126,9 +131,7 @@ def main(idx):
             idx = max(0, idx - 1)
         else:
             break
-        show.bkt.can_exit = True
-        show.bkt.join()
 
 
 if __name__ == '__main__':
-    main(0)
+    main(60)

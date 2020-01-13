@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 
 from pywavefront import Wavefront
@@ -6,10 +7,10 @@ from pywavefront.mesh import Mesh
 from pywavefront.material import Material
 from cfgreader import conf
 import numpy as np
-from numpy.linalg import norm
 from sklearn.preprocessing import normalize
 from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
 from sklearn.manifold import spectral_embedding
+from sklearn.cluster import dbscan
 from sklearn.cluster import k_means
 from showobj import ShowObj
 from threading import Thread, Lock
@@ -31,16 +32,20 @@ class Timer(object):
         print('Elapsed: %s' % (time.time() - self.tstart))
 
 
-def get_normal_cls(vertices):
-    a = np.array(vertices, dtype=np.float32).reshape([-1, 6])
-    nvtx, _ = a.shape
-    print("Vtx Count: %d" % nvtx)
+def get_normal_cls(a, max_samples=50000):
+    a = np.asanyarray(a, dtype=np.float32).reshape([-1, 6])
+    a = np.reshape(normalize(a[:, :3]), (-1, 3, 3))
+    a = np.mean(a, axis=1)
 
-    n9f = np.reshape(normalize(a[:, :3]), (-1, 3, 3))
-    n3f = np.mean(n9f, axis=1)
+    n_samples, _ = a.shape
+    print("Sample Count: %d" % n_samples)
+    perm = np.random.permutation(n_samples)
 
+    if n_samples > max_samples:
+        print("Sampling to: %d" % max_samples)
+        perm = perm[:max_samples]
     with Timer("abs_cosine_similarity"):
-        sim_mat = np.abs(cosine_similarity(n3f))
+        sim_mat = np.abs(cosine_similarity(a[perm]))
     with Timer("spectral_embedding"):
         embedding = spectral_embedding(sim_mat, n_components=3, drop_first=False)
     with Timer("k_means"):
@@ -50,17 +55,19 @@ def get_normal_cls(vertices):
     max_lbl_id = np.argmax(ret)
     ret.sort(reverse=True)
     print('\t'.join(str(s) for s in ret))
-    print(centers)
+    # print(centers)
     # plt.figure()
     # plt.scatter(embedding[:, 1], embedding[:, 2], c=labels)
     # plt.show()
 
-    dist = euclidean_distances(embedding, centers)
-    min_norm_ids = np.argmin(dist, axis=0)
-    best_norm_id = min_norm_ids[max_lbl_id]
+    # dist = euclidean_distances(embedding, centers)
+    # min_norm_ids = np.argmin(dist, axis=0)
+    # best_norm_id = min_norm_ids[max_lbl_id]
 
-    labels = np.repeat(labels, 3)
-    return a, labels, embedding, n3f[best_norm_id]
+    full_labels = np.full(n_samples, -1)
+    full_labels[perm] = labels
+    full_labels = np.repeat(full_labels, 3)
+    return perm, full_labels
 
 
 def normal_cls_functor(pixel_format):
@@ -82,29 +89,32 @@ class BkThread(Thread):
 
     def do_cluster(self, mtl_id_list):
         _, mtl = mtl_id_list[0]
-        vertices = mtl.vertices
+        vertices = np.asanyarray(mtl.vertices, dtype=np.float32)
         vertex_format = mtl.vertex_format
         for _, material in mtl_id_list[1:]:
             assert vertex_format == material.vertex_format
-            vertices += material.vertices
+            vertices1 = np.asanyarray(material.vertices, dtype=np.float32)
+            vertices = np.concatenate((vertices, vertices1), axis=None)
         return normal_cls_functor(vertex_format)(vertices)
 
-    def change_mtl(self, idx, material: Material, a, labels):
-        nvtx, _ = a.shape
+    def change_mtl(self, idx, material: Material, labels):
+        a = np.array(material.vertices, dtype=np.float32).reshape([-1, 6])
+        n_vtx, _ = a.shape
+        assert n_vtx == len(labels)
 
         self.lock_list[idx].acquire(blocking=True)
 
-        color = np.zeros(shape=(nvtx, 4), dtype=np.float32)
+        color = np.zeros(shape=(n_vtx, 4), dtype=np.float32)
         for lbl, arr in zip(labels, color):
-            arr[lbl] = 1
+            if lbl >= 0:
+                arr[lbl] = 1
 
         material.gl_floats = np.concatenate((color, a), axis=1).ctypes
-        material.triangle_count = nvtx
+        material.triangle_count = n_vtx
         material.vertex_format = 'C4F_N3F_V3F'
 
         self.lock_list[idx].release()
-
-        self.result_list[idx] = norm
+        self.result_list[idx] = None
 
     def add_to_dict(self):
         for idx, mesh in enumerate(self.mesh_list):
@@ -130,16 +140,19 @@ class BkThread(Thread):
             return
 
         for cls_name, mtl_id_list in self.grp_dict.items():
-            a, labels, embedding, norm = self.do_cluster(mtl_id_list)
+            perm, labels = self.do_cluster(mtl_id_list)
+            if self.can_exit:
+                return
+            labels_tmp = labels
             for idx, mtl in mtl_id_list:
-                self.change_mtl(idx, mtl, a, labels)
+                n_vertex = int(len(mtl.vertices) / 6)
+                self.change_mtl(idx, mtl, labels_tmp[:n_vertex])
+                labels_tmp = labels_tmp[n_vertex:]
             if callable(self.callback):
                 self.callback(cls_name=cls_name,
                               idlist=np.fromiter((idx for idx, mtl in mtl_id_list),
                                                  dtype=np.int, count=len(mtl_id_list)),
-                              a=a, labels=labels, embedding=embedding, norm=norm)
-            if self.can_exit:
-                return
+                              perm=perm, labels=labels)
 
 
 class ClsObj(ShowObj):
@@ -209,7 +222,7 @@ class ClsObj(ShowObj):
 
 
 def save_data(im_id: str):
-    print('Init saving: %s' % im_id)
+    print('Init saving: %s' % im_id, flush=True)
 
     def do_save(*args, cls_name: str, **kwargs):
         save_dir = os.path.join(conf.render_dir, im_id)
@@ -233,4 +246,4 @@ def main(idx):
 
 
 if __name__ == '__main__':
-    main(50)
+    main(0)
