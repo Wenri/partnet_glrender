@@ -134,4 +134,4 @@ def main(idx):
 
 
 if __name__ == '__main__':
-    main(60)
+    main(0)

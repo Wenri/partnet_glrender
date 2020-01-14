@@ -44,7 +44,9 @@ class DBReader(SimpleNamespace):
                     continue
                 id, cls, file_path = line_s.split('\t')
                 assert total == int(id)
-                idlist.append((cls.strip(), os.path.basename(file_path)))
+                file_path, im_file = os.path.split(file_path)
+                file_path, _ = os.path.split(file_path)
+                idlist.append((os.path.basename(file_path), cls.strip(), im_file))
                 total += 1
         return idlist
 
@@ -66,7 +68,7 @@ class DBReader(SimpleNamespace):
                     grouping_set.add(line_s)
         return grouping_set
 
-    def mtl_name_to_cls(self, name: str):
+    def get_cls_from_mtl(self, name: str):
         prefix, ext = os.path.splitext(name)
         assert prefix == 'Default_OBJ'
         id = int(ext.lstrip('.')) if ext else 0

@@ -85,6 +85,7 @@ class BkThread(Thread):
         self.result_list = [None for i in range(len(mesh_list))]
         self.can_exit = False
         self.callback = callback
+        self.im_id = None
         super().__init__(daemon=True)
 
     def do_cluster(self, mtl_id_list):
@@ -120,7 +121,11 @@ class BkThread(Thread):
         for idx, mesh in enumerate(self.mesh_list):
             print('analysis mesh: %s' % mesh.name)
             for mtl in mesh.materials:
-                cls_name, file_name = conf.mtl_name_to_cls(mtl.name)
+                mtl_im_id, cls_name, file_name = conf.get_cls_from_mtl(mtl.name)
+                if self.im_id:
+                    assert mtl_im_id == self.im_id
+                else:
+                    self.im_id = mtl_im_id
                 file_name, _ = os.path.splitext(file_name)
                 mesh_name, _ = os.path.splitext(mesh.name)
                 assert mesh_name == file_name
@@ -133,6 +138,24 @@ class BkThread(Thread):
                     strindex = cls_name.rindex('/')
                     cls_name = cls_name[:strindex]
 
+    def get_cluster_result(self, cls_name: str, mtl_id_list: list):
+        cluster_dict = load_cluster_dict(self.im_id, cls_name)
+        if not cluster_dict:
+            perm, labels = self.do_cluster(mtl_id_list)
+            save_cluster_dict(im_id=self.im_id, cls_name=cls_name,
+                              idlist=np.fromiter((idx for idx, mtl in mtl_id_list),
+                                                 dtype=np.int, count=len(mtl_id_list)),
+                              perm=perm, labels=labels)
+        else:
+            idlist = cluster_dict['idlist']
+            assert len(idlist) == len(mtl_id_list)
+            for idx, idx_mtl in zip(idlist, mtl_id_list):
+                idx2, _ = idx_mtl
+                assert idx == idx2
+            perm = cluster_dict['perm']
+            labels = cluster_dict['labels']
+        return perm, labels
+
     def run(self):
         self.add_to_dict()
 
@@ -140,7 +163,7 @@ class BkThread(Thread):
             return
 
         for cls_name, mtl_id_list in self.grp_dict.items():
-            perm, labels = self.do_cluster(mtl_id_list)
+            _, labels = self.get_cluster_result(cls_name, mtl_id_list)
             if self.can_exit:
                 return
             labels_tmp = labels
@@ -149,10 +172,7 @@ class BkThread(Thread):
                 self.change_mtl(idx, mtl, labels_tmp[:n_vertex])
                 labels_tmp = labels_tmp[n_vertex:]
             if callable(self.callback):
-                self.callback(cls_name=cls_name,
-                              idlist=np.fromiter((idx for idx, mtl in mtl_id_list),
-                                                 dtype=np.int, count=len(mtl_id_list)),
-                              perm=perm, labels=labels)
+                self.callback()
 
 
 class ClsObj(ShowObj):
@@ -221,16 +241,18 @@ class ClsObj(ShowObj):
         self.bkt.start()
 
 
-def save_data(im_id: str):
-    print('Init saving: %s' % im_id, flush=True)
+def load_cluster_dict(im_id, cls_name):
+    file_path = os.path.join(conf.render_dir, im_id, '{}.npz'.format(cls_name.replace('/', '-')))
+    if not os.path.exists(file_path):
+        return None
+    return np.load(file_path)
 
-    def do_save(*args, cls_name: str, **kwargs):
-        save_dir = os.path.join(conf.render_dir, im_id)
-        os.makedirs(save_dir, exist_ok=True)
-        save_file = os.path.join(save_dir, '{}.npz'.format(cls_name.replace('/', '-')))
-        np.savez(save_file, *args, **kwargs)
 
-    return do_save
+def save_cluster_dict(*args, im_id: str, cls_name: str, **kwargs):
+    save_dir = os.path.join(conf.render_dir, im_id)
+    os.makedirs(save_dir, exist_ok=True)
+    save_file = os.path.join(save_dir, '{}.npz'.format(cls_name.replace('/', '-')))
+    np.savez(save_file, *args, **kwargs)
 
 
 def main(idx):
@@ -239,7 +261,7 @@ def main(idx):
         im_id = dblist[idx]
         im_file = os.path.join(conf.data_dir, "{}.obj".format(im_id))
         scene = Wavefront(im_file)
-        bkt = BkThread(scene.mesh_list, save_data(im_id))
+        bkt = BkThread(scene.mesh_list)
         bkt.start()
         idx = min(idx + 1, len(dblist) - 1)
         bkt.join()
