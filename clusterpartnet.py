@@ -1,22 +1,23 @@
+import operator
 import os
-import sys
 import time
-
-from pywavefront import Wavefront
-from pywavefront.mesh import Mesh
-from pywavefront.material import Material
-from cfgreader import conf
-import numpy as np
-from sklearn.preprocessing import normalize
-from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
-from sklearn.manifold import spectral_embedding
-from sklearn.cluster import dbscan
-from sklearn.cluster import k_means
-from showobj import ShowObj
-from threading import Thread, Lock
-from pyglet.gl import *
-from pywavefront.visualization import gl_light
 from collections import defaultdict
+from threading import Thread, Lock
+
+import numpy as np
+from pyglet.gl import *
+from pywavefront import Wavefront
+from pywavefront.material import Material
+from pywavefront.visualization import gl_light
+from sklearn.cluster import k_means
+from sklearn.manifold import spectral_embedding
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.preprocessing import normalize
+
+from cfgreader import conf
+from showobj import ShowObj
+
+CLUSTER_DIM = 3
 
 
 class Timer(object):
@@ -47,9 +48,9 @@ def get_normal_cls(a, max_samples=50000):
     with Timer("abs_cosine_similarity"):
         sim_mat = np.abs(cosine_similarity(a[perm]))
     with Timer("spectral_embedding"):
-        embedding = spectral_embedding(sim_mat, n_components=3, drop_first=False)
+        embedding = spectral_embedding(sim_mat, n_components=CLUSTER_DIM, drop_first=False)
     with Timer("k_means"):
-        centers, labels, _ = k_means(embedding, n_clusters=3)
+        centers, labels, _ = k_means(embedding, n_clusters=CLUSTER_DIM)
 
     ret = [np.count_nonzero(labels == i) for i in range(3)]
     max_lbl_id = np.argmax(ret)
@@ -77,6 +78,17 @@ def normal_cls_functor(pixel_format):
     return pixel_normal[pixel_format]
 
 
+def do_cluster(mtl_list):
+    mtl = mtl_list[0]
+    vertices = np.asanyarray(mtl.vertices, dtype=np.float32)
+    vertex_format = mtl.vertex_format
+    for material in mtl_list[1:]:
+        assert vertex_format == material.vertex_format
+        vertices1 = np.asanyarray(material.vertices, dtype=np.float32)
+        vertices = np.concatenate((vertices, vertices1), axis=None)
+    return normal_cls_functor(vertex_format)(vertices)
+
+
 class BkThread(Thread):
     def __init__(self, mesh_list, callback=None):
         self.grp_dict = defaultdict(list)
@@ -87,16 +99,6 @@ class BkThread(Thread):
         self.callback = callback
         self.im_id = None
         super().__init__(daemon=True)
-
-    def do_cluster(self, mtl_id_list):
-        _, mtl = mtl_id_list[0]
-        vertices = np.asanyarray(mtl.vertices, dtype=np.float32)
-        vertex_format = mtl.vertex_format
-        for _, material in mtl_id_list[1:]:
-            assert vertex_format == material.vertex_format
-            vertices1 = np.asanyarray(material.vertices, dtype=np.float32)
-            vertices = np.concatenate((vertices, vertices1), axis=None)
-        return normal_cls_functor(vertex_format)(vertices)
 
     def change_mtl(self, idx, material: Material, labels):
         a = np.array(material.vertices, dtype=np.float32).reshape([-1, 6])
@@ -115,45 +117,37 @@ class BkThread(Thread):
         material.vertex_format = 'C4F_N3F_V3F'
 
         self.lock_list[idx].release()
-        self.result_list[idx] = None
+        self.result_list[idx] = labels
 
     def add_to_dict(self):
         for idx, mesh in enumerate(self.mesh_list):
             print('analysis mesh: %s' % mesh.name)
-            for mtl in mesh.materials:
-                mtl_im_id, cls_name, file_name = conf.get_cls_from_mtl(mtl.name)
-                if self.im_id:
-                    assert mtl_im_id == self.im_id
-                else:
-                    self.im_id = mtl_im_id
-                file_name, _ = os.path.splitext(file_name)
-                mesh_name, _ = os.path.splitext(mesh.name)
-                assert mesh_name == file_name
-                cls_name = str(cls_name).strip()
-                while cls_name:
-                    if cls_name in conf.groupset:
-                        self.grp_dict[cls_name].append((idx, mtl))
-                        print('Adding to ' + cls_name)
-                        break
-                    strindex = cls_name.rindex('/')
-                    cls_name = cls_name[:strindex]
+            mtl, = mesh.materials
+            mtl_im_id, cls_name, file_name = conf.get_cls_from_mtlname(mtl.name)
+            if self.im_id:
+                assert mtl_im_id == self.im_id
+            else:
+                self.im_id = mtl_im_id
+            file_name, _ = os.path.splitext(file_name)
+            mesh_name, _ = os.path.splitext(mesh.name)
+            assert mesh_name == file_name
+            cls_name = conf.find_group_name(cls_name)
+            self.grp_dict[cls_name].append((idx, mtl))
+            print('Adding to ' + cls_name)
 
-    def get_cluster_result(self, cls_name: str, mtl_id_list: list):
+    def gen_cluster_result(self, cls_name: str, mtl_id_list: list):
         cluster_dict = load_cluster_dict(self.im_id, cls_name)
+        id_list, mtl_list = zip(*mtl_id_list)
         if not cluster_dict:
-            perm, labels = self.do_cluster(mtl_id_list)
+            perm, labels = do_cluster(mtl_list)
             save_cluster_dict(im_id=self.im_id, cls_name=cls_name,
-                              idlist=np.fromiter((idx for idx, mtl in mtl_id_list),
-                                                 dtype=np.int, count=len(mtl_id_list)),
+                              idlist=np.fromiter(id_list, dtype=np.int, count=len(id_list)),
                               perm=perm, labels=labels)
         else:
             idlist = cluster_dict['idlist']
-            assert len(idlist) == len(mtl_id_list)
-            for idx, idx_mtl in zip(idlist, mtl_id_list):
-                idx2, _ = idx_mtl
-                assert idx == idx2
             perm = cluster_dict['perm']
             labels = cluster_dict['labels']
+            assert len(idlist) == len(id_list) and all(map(operator.eq, idlist, id_list))
         return perm, labels
 
     def run(self):
@@ -163,14 +157,13 @@ class BkThread(Thread):
             return
 
         for cls_name, mtl_id_list in self.grp_dict.items():
-            _, labels = self.get_cluster_result(cls_name, mtl_id_list)
+            _, labels = self.gen_cluster_result(cls_name, mtl_id_list)
             if self.can_exit:
                 return
-            labels_tmp = labels
             for idx, mtl in mtl_id_list:
                 n_vertex = int(len(mtl.vertices) / 6)
-                self.change_mtl(idx, mtl, labels_tmp[:n_vertex])
-                labels_tmp = labels_tmp[n_vertex:]
+                self.change_mtl(idx, mtl, labels[:n_vertex])
+                labels = labels[n_vertex:]
             if callable(self.callback):
                 self.callback()
 

@@ -1,19 +1,36 @@
 import os
-import time
+from operator import itemgetter
 
-from pywavefront import Wavefront
-from pywavefront.mesh import Mesh
-from pywavefront.material import Material
-from cfgreader import conf
+import glfw
 import numpy as np
 from numpy.linalg import norm
-from showobj import ShowObj
-from threading import Thread, Lock
 from pyglet.gl import *
+from pywavefront import Wavefront
 from pywavefront.visualization import gl_light
-from clusterpartnet import BkThread
-import glfw
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.preprocessing import normalize
 
+from cfgreader import conf
+from clusterpartnet import BkThread, CLUSTER_DIM
+from showobj import ShowObj
+
+
+def do_norm_calc(mtl_list, label_list):
+    all_vertices = [list() for i in range(CLUSTER_DIM)]
+    for material, label in zip(mtl_list, label_list):
+        la, l1, l2 = np.asanyarray(label, dtype=np.int32).reshape([-1, 3]).T
+        assert np.all(la == l1) and np.all(la == l2)
+        a = np.asanyarray(material.vertices, dtype=np.float32).reshape([-1, 6])
+        a = np.reshape(normalize(a[:, :3]), (-1, 3, 3))
+        a = np.mean(a, axis=1)
+        for cur_label, vertices in enumerate(all_vertices):
+            vertices.append(a[la == cur_label])
+
+    ret = [(i, len(a), a[np.argmax(np.sum(np.abs(cosine_similarity(a)), axis=1))])
+           for i, a in enumerate(map(np.concatenate, all_vertices))]
+
+    ret.sort(key=itemgetter(1), reverse=True)
+    return ret
 
 class ClsObj(ShowObj):
     VERTEX_FORMATS = {
@@ -36,7 +53,17 @@ class ClsObj(ShowObj):
 
     def do_part(self, partid):
         mesh = self.scene.mesh_list[partid]
-        vv = self.bkt.result_list[partid]
+        mtl, = mesh.materials
+        mtl_im_id, cls_name, file_name = conf.get_cls_from_mtlname(mtl.name)
+        file_name, _ = os.path.splitext(file_name)
+        mesh_name, _ = os.path.splitext(mesh.name)
+        assert file_name == mesh_name
+
+        cls_name = conf.find_group_name(cls_name)
+        id_list, mtl_list = zip(*self.bkt.grp_dict[cls_name])
+        label_list = [self.bkt.result_list[idx] for idx in id_list]
+        vv = do_norm_calc(mtl_list, label_list)
+        _, _, vv = vv[0]
         # vv = np.array([1, 1, 1], dtype=np.float32)
         vv /= norm(vv)
         vx, vy, vz = vv
