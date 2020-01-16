@@ -32,7 +32,7 @@ class Timer(object):
         print('Elapsed: %s' % (time.time() - self.tstart))
 
 
-def get_normal_cls(a, max_samples=50000):
+def get_normal_cls(a, max_samples=60000):
     a = np.asanyarray(a, dtype=np.float32).reshape([-1, 6])
     a = np.reshape(normalize(a[:, :3]), (-1, 3, 3))
     a = np.mean(a, axis=1)
@@ -242,6 +242,7 @@ class ClsObj(ShowObj):
 
 
 def load_cluster_dict(im_id, cls_name):
+    print('loading {}: {} ...'.format(im_id, cls_name))
     file_path = os.path.join(conf.render_dir, im_id, '{}.npz'.format(cls_name.replace('/', '-')))
     if not os.path.exists(file_path):
         return None
@@ -249,22 +250,27 @@ def load_cluster_dict(im_id, cls_name):
 
 
 def save_cluster_dict(*args, im_id: str, cls_name: str, **kwargs):
+    print('saving {}: {} ...'.format(im_id, cls_name), end=' ')
     save_dir = os.path.join(conf.render_dir, im_id)
     os.makedirs(save_dir, exist_ok=True)
     save_file = os.path.join(save_dir, '{}.npz'.format(cls_name.replace('/', '-')))
     np.savez(save_file, *args, **kwargs)
+    print('done.', flush=True)
 
 
-def main(idx):
+def main(nskip):
     dblist = conf.dblist
+    idx = len(dblist) - 1 - nskip
     while True:
         im_id = dblist[idx]
         im_file = os.path.join(conf.data_dir, "{}.obj".format(im_id))
         scene = Wavefront(im_file)
         bkt = BkThread(scene.mesh_list)
         bkt.start()
-        idx = min(idx + 1, len(dblist) - 1)
+        idx = max(idx - 1, 0)
         bkt.join()
+        if idx <= 0:
+            break
 
 
 if __name__ == '__main__':
