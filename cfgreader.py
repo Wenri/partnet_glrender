@@ -68,11 +68,19 @@ class DBReader(SimpleNamespace):
                     grouping_set.add(line_s)
         return grouping_set
 
-    def get_cls_from_mtl(self, name: str):
+    def get_cls_from_mtlname(self, name: str):
         prefix, ext = os.path.splitext(name)
         assert prefix == 'Default_OBJ'
         id = int(ext.lstrip('.')) if ext else 0
         return self.idname[id]
+
+    def find_group_name(self, cls_name: str):
+        while cls_name:
+            if cls_name in self.groupset:
+                break
+            strindex = cls_name.rindex('/')
+            cls_name = cls_name[:strindex]
+        return cls_name
 
 
 conf = DBReader('config.cfg')
