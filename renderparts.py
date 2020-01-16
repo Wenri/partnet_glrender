@@ -1,8 +1,10 @@
 import os
 from operator import itemgetter
+from threading import Lock
 
 import glfw
 import numpy as np
+from imageio import imwrite
 from numpy.linalg import norm
 from pyglet.gl import *
 from pywavefront import Wavefront
@@ -13,8 +15,6 @@ from sklearn.preprocessing import normalize
 from cfgreader import conf
 from clusterpartnet import BkThread, CLUSTER_DIM
 from showobj import ShowObj
-from threading import Lock
-from imageio import imwrite
 
 
 def triangle_area(a):
@@ -77,6 +77,7 @@ class ClsObj(ShowObj):
     def __call__(self, cls_name: str, *args, **kwargs):
         if not cls_name:
             self.render_lock.acquire()
+            self.result = 1
             glfw.set_window_should_close(self.window, GL_TRUE)
             glfw.post_empty_event()
             return
@@ -85,6 +86,7 @@ class ClsObj(ShowObj):
 
         self.render_lock.acquire()
         self.del_set = set(idx for idx in range(len(self.scene.mesh_list)) if idx not in set(id_list))
+        self.sel_set = set()
         self.look_at_reset()
         self.render_name = cls_name.replace('/', '_')
         print(self.del_set)
@@ -101,15 +103,24 @@ class ClsObj(ShowObj):
             self.render_name = cls_name.replace('/', '_') + '_look{}-'.format(c)
             glfw.post_empty_event()
 
-    def __init__(self, scene: Wavefront):
-        self.bkt = BkThread(scene.mesh_list, self)
+    def __init__(self, dblist):
+        self.dblist = dblist
+        self.imageid = 0
+        self.bkt = None
         self.cluster_cls = None
         self.cluster_id = None
         self.cluster_color = False
-        self.render_lock = Lock()
+        self.render_lock = None
         self.render_name = None
         self.window = None
-        super().__init__(scene)
+        super().__init__(self.load_image())
+
+    def load_image(self):
+        im_id = self.dblist[self.imageid]
+        im_file = os.path.join(conf.data_dir, "{}.obj".format(im_id))
+        scene = Wavefront(im_file)
+        self.bkt = BkThread(scene.mesh_list, self)
+        return scene
 
     def look_at_reset(self):
         self.rot_angle = np.array((38.0, -17.0), dtype=np.float32)
@@ -198,11 +209,28 @@ class ClsObj(ShowObj):
         glPopClientAttrib()
 
     def window_load(self, window):
+        self.render_lock = Lock()
         self.render_lock.acquire()
+        self.del_set = set()
+        self.sel_set = set()
         self.look_at_reset()
         self.render_name = 'render'
         self.window = window
+        self.result = 0
         self.bkt.start()
+
+    def window_closing(self, window):
+        if self.result == 1:
+            self.imageid = min(self.imageid + 1, len(self.dblist) - 1)
+        elif self.result == 2:
+            self.imageid = max(0, self.imageid - 1)
+        else:
+            return
+        self.bkt.can_exit = True
+        self.bkt.join()
+        self.scene = self.load_image()
+        glfw.set_window_should_close(window, GL_FALSE)
+        self.window_load(window)
 
     def show_obj(self):
         super().show_obj()
@@ -214,23 +242,17 @@ class ClsObj(ShowObj):
         if self.render_lock.locked():
             img = self.save_to_buffer()
             self.render_lock.release()
-            imwrite('{}.png'.format(self.render_name), img)
+            im_id = self.bkt.im_id
+            im_name = '{}.png'.format(self.render_name)
+            file_path = os.path.join(conf.render_dir, im_id)
+            if not os.path.exists(file_path):
+                os.mkdir(file_path)
+            imwrite(os.path.join(file_path, im_name), img)
 
 
 def main(idx):
-    dblist = conf.dblist
-    while True:
-        im_id = dblist[idx]
-        im_file = os.path.join(conf.data_dir, "{}.obj".format(im_id))
-        scene = Wavefront(im_file)
-        show = ClsObj(scene)
-        show.show_obj()
-        if show.result == 1:
-            idx = min(idx + 1, len(dblist) - 1)
-        elif show.result == 2:
-            idx = max(0, idx - 1)
-        else:
-            break
+    show = ClsObj(conf.dblist)
+    show.show_obj()
 
 
 if __name__ == '__main__':

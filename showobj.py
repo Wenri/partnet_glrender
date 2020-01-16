@@ -1,9 +1,10 @@
 import glfw
 import numpy as np
+from imageio import imwrite
 from pyglet.gl import *
 from pywavefront.visualization import draw_material
 from pywavefront.wavefront import Wavefront
-from imageio import imwrite
+
 
 class ShowObj:
     def __init__(self, scene: Wavefront):
@@ -162,6 +163,9 @@ class ShowObj:
     def window_load(self, window):
         pass
 
+    def window_closing(self, window):
+        pass
+
     def show_obj(self):
         # Initialize the library
         if not glfw.init():
@@ -197,6 +201,9 @@ class ShowObj:
 
             # Poll for and process events
             glfw.wait_events()
+
+            if glfw.window_should_close(window):
+                self.window_closing(window)
 
         glfw.terminate()
 

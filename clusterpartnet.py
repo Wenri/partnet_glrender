@@ -8,14 +8,12 @@ import numpy as np
 from pyglet.gl import *
 from pywavefront import Wavefront
 from pywavefront.material import Material
-from pywavefront.visualization import gl_light
 from sklearn.cluster import k_means
 from sklearn.manifold import spectral_embedding
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import normalize
 
 from cfgreader import conf
-from showobj import ShowObj
 
 CLUSTER_DIM = 3
 
@@ -89,6 +87,23 @@ def do_cluster(mtl_list):
     return normal_cls_functor(vertex_format)(vertices)
 
 
+def load_cluster_dict(im_id, cls_name):
+    print('loading {}: {} ...'.format(im_id, cls_name))
+    file_path = os.path.join(conf.render_dir, im_id, '{}.npz'.format(cls_name.replace('/', '-')))
+    if not os.path.exists(file_path):
+        return None
+    return np.load(file_path)
+
+
+def save_cluster_dict(*args, im_id: str, cls_name: str, **kwargs):
+    print('saving {}: {} ...'.format(im_id, cls_name), end=' ')
+    save_dir = os.path.join(conf.render_dir, im_id)
+    os.makedirs(save_dir, exist_ok=True)
+    save_file = os.path.join(save_dir, '{}.npz'.format(cls_name.replace('/', '-')))
+    np.savez(save_file, *args, **kwargs)
+    print('done.', flush=True)
+
+
 class BkThread(Thread):
     def __init__(self, mesh_list, callback=None):
         self.grp_dict = defaultdict(list)
@@ -98,6 +113,7 @@ class BkThread(Thread):
         self.can_exit = False
         self.callback = callback
         self.im_id = None
+        self.add_to_dict()
         super().__init__(daemon=True)
 
     def change_mtl(self, idx, material: Material, labels):
@@ -151,8 +167,6 @@ class BkThread(Thread):
         return perm, labels
 
     def run(self):
-        self.add_to_dict()
-
         if self.can_exit:
             return
 
@@ -168,23 +182,6 @@ class BkThread(Thread):
                 self.callback(cls_name)
 
         self.callback(None)
-
-
-def load_cluster_dict(im_id, cls_name):
-    print('loading {}: {} ...'.format(im_id, cls_name))
-    file_path = os.path.join(conf.render_dir, im_id, '{}.npz'.format(cls_name.replace('/', '-')))
-    if not os.path.exists(file_path):
-        return None
-    return np.load(file_path)
-
-
-def save_cluster_dict(*args, im_id: str, cls_name: str, **kwargs):
-    print('saving {}: {} ...'.format(im_id, cls_name), end=' ')
-    save_dir = os.path.join(conf.render_dir, im_id)
-    os.makedirs(save_dir, exist_ok=True)
-    save_file = os.path.join(save_dir, '{}.npz'.format(cls_name.replace('/', '-')))
-    np.savez(save_file, *args, **kwargs)
-    print('done.', flush=True)
 
 
 def main(nskip):
