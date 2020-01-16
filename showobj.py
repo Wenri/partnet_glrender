@@ -8,7 +8,7 @@ import numpy as np
 class ShowObj:
     def __init__(self, scene: Wavefront):
         self.scene = scene
-        self.rot_angle = np.array((0.0, 0.0), dtype=np.float32)
+        self.rot_angle = np.array((38.0, -17.0), dtype=np.float32)
         self.rot_angle_old = self.rot_angle
         self.cur_pos_old = (0.0, 0.0)
         self.cur_rot_mode = False

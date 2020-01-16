@@ -19,7 +19,8 @@ def triangle_area(a):
     a = np.square(a - np.roll(a, 1, axis=1))
     a = np.sqrt(np.sum(a, axis=2))
     p = np.sum(a, axis=1) / 2
-    s = p * (p - a[:, 0]) * (p - a[:, 1]) * (p - a[:, 2])
+    a, b, c = a.T
+    s = p * (p - a) * (p - b) * (p - c)
     s[s < 0] = 0
     return np.sqrt(s)
 
@@ -39,7 +40,6 @@ def best_mean(a):
     area = np.sum(area_score)
     area_score = area_score / np.sum(area_score)
     a = a[:, :3] * area_score[:, np.newaxis]
-
     return area, np.mean(a, axis=0)
 
 
@@ -55,8 +55,8 @@ def do_norm_calc(mtl_list, label_list):
         for c, vertices in enumerate(all_vertices):
             vertices.append(a[la == c])
 
-    ret = [((i, len(a),) + best_medoids(a)) for i, a in enumerate(map(np.concatenate, all_vertices))]
-    ret.sort(key=itemgetter(2), reverse=True)
+    ret = [best_medoids(a) for a in map(np.concatenate, all_vertices)]
+    ret.sort(key=itemgetter(0), reverse=True)
     return ret
 
 
@@ -81,6 +81,25 @@ class ClsObj(ShowObj):
         self.cluster_id = None
         super().__init__(scene)
 
+    def look_at_cls(self, cls_name, cid=0):
+        if cls_name not in self.bkt.grp_dict:
+            print("Not finished!")
+            return
+        id_list, mtl_list = zip(*self.bkt.grp_dict[cls_name])
+        label_list = [self.bkt.result_list[idx] for idx in id_list]
+        vv = do_norm_calc(mtl_list, label_list)
+        area, vv = vv[cid]
+        vv /= norm(vv)
+        self.initial_look_at = 4 * vv
+        vx, vy, vz = vv
+        if vx != 0 or vz != 0:
+            self.up_vector = np.array((0, 1, 0), dtype=np.float32)
+        else:
+            self.up_vector = np.array((1, 0, 0), dtype=np.float32)
+        self.rot_angle[0] = 0
+        self.rot_angle[1] = 0
+        print(area, vv)
+
     def do_part(self, partid):
         mesh = self.scene.mesh_list[partid]
         mtl, = mesh.materials
@@ -99,22 +118,7 @@ class ClsObj(ShowObj):
         else:
             self.cluster_id += 1
         print("> {}({}):".format(cls_name, self.cluster_id), end=' ')
-
-        id_list, mtl_list = zip(*self.bkt.grp_dict[cls_name])
-        label_list = [self.bkt.result_list[idx] for idx in id_list]
-        vv = do_norm_calc(mtl_list, label_list)
-        _, _, area, vv = vv[self.cluster_id]
-        # vv = np.array([1, 1, 1], dtype=np.float32)
-        vv /= norm(vv)
-        self.initial_look_at = 4*vv
-        vx, vy, vz = vv
-        if vx != 0 or vz !=0:
-            self.up_vector = np.array((0, 1, 0), dtype=np.float32)
-        else:
-            self.up_vector = np.array((1, 0, 0), dtype=np.float32)
-        self.rot_angle[0] = 0
-        self.rot_angle[1] = 0
-        print(self.rot_angle)
+        self.look_at_cls(cls_name, self.cluster_id)
 
     def draw_material(self, idx, material, face=GL_FRONT_AND_BACK, lighting_enabled=True, textures_enabled=True):
         """Draw a single material"""
