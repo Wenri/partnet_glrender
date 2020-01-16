@@ -165,73 +165,9 @@ class BkThread(Thread):
                 self.change_mtl(idx, mtl, labels[:n_vertex])
                 labels = labels[n_vertex:]
             if callable(self.callback):
-                self.callback()
+                self.callback(cls_name)
 
-
-class ClsObj(ShowObj):
-    VERTEX_FORMATS = {
-        'V3F': GL_V3F,
-        'C3F_V3F': GL_C3F_V3F,
-        'N3F_V3F': GL_N3F_V3F,
-        'T2F_V3F': GL_T2F_V3F,
-        'C4F_N3F_V3F': GL_C4F_N3F_V3F,
-        'T2F_C3F_V3F': GL_T2F_C3F_V3F,
-        'T2F_N3F_V3F': GL_T2F_N3F_V3F,
-        'T2F_C4F_N3F_V3F': GL_T2F_C4F_N3F_V3F,
-    }
-
-    def __init__(self, scene: Wavefront):
-        self.bkt = BkThread(scene.mesh_list)
-        super().__init__(scene)
-
-    def do_part(self, partid):
-        mesh = self.scene.mesh_list[partid]
-        print('\t'.join("%s(%s)" % (mtl.name, mtl.vertex_format) for mtl in mesh.materials))
-
-    def draw_material(self, idx, material, face=GL_FRONT_AND_BACK, lighting_enabled=True, textures_enabled=True):
-        """Draw a single material"""
-        self.bkt.lock_list[idx].acquire(blocking=True)
-
-        if material.gl_floats is None:
-            material.gl_floats = np.asarray(material.vertices, dtype=np.float32).ctypes
-            material.triangle_count = len(material.vertices) / material.vertex_size
-
-        vertex_format = self.VERTEX_FORMATS.get(material.vertex_format)
-        if not vertex_format:
-            raise ValueError("Vertex format {} not supported by pyglet".format(material.vertex_format))
-
-        glPushClientAttrib(GL_CLIENT_VERTEX_ARRAY_BIT)
-        glPushAttrib(GL_CURRENT_BIT | GL_ENABLE_BIT | GL_LIGHTING_BIT)
-        glEnable(GL_CULL_FACE)
-        glEnable(GL_DEPTH_TEST)
-        glCullFace(GL_BACK)
-
-        glDisable(GL_TEXTURE_2D)
-        glMaterialfv(face, GL_DIFFUSE, gl_light(material.diffuse))
-        glMaterialfv(face, GL_AMBIENT, gl_light(material.ambient))
-        glMaterialfv(face, GL_SPECULAR, gl_light(material.specular))
-        glMaterialfv(face, GL_EMISSION, gl_light(material.emissive))
-        glMaterialf(face, GL_SHININESS, min(128.0, material.shininess))
-        glEnable(GL_LIGHT0)
-
-        if material.has_normals:
-            glEnable(GL_LIGHTING)
-        else:
-            glDisable(GL_LIGHTING)
-
-        if vertex_format == GL_C4F_N3F_V3F:
-            glEnable(GL_COLOR_MATERIAL)
-
-        glInterleavedArrays(vertex_format, 0, material.gl_floats)
-        glDrawArrays(GL_TRIANGLES, 0, int(material.triangle_count))
-
-        self.bkt.lock_list[idx].release()
-
-        glPopAttrib()
-        glPopClientAttrib()
-
-    def window_load(self, window):
-        self.bkt.start()
+        self.callback(None)
 
 
 def load_cluster_dict(im_id, cls_name):

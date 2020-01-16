@@ -13,6 +13,8 @@ from sklearn.preprocessing import normalize
 from cfgreader import conf
 from clusterpartnet import BkThread, CLUSTER_DIM
 from showobj import ShowObj
+from threading import Lock
+from imageio import imwrite
 
 
 def triangle_area(a):
@@ -72,14 +74,47 @@ class ClsObj(ShowObj):
         'T2F_C4F_N3F_V3F': GL_T2F_C4F_N3F_V3F,
     }
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, cls_name: str, *args, **kwargs):
+        if not cls_name:
+            self.render_lock.acquire()
+            glfw.set_window_should_close(self.window, GL_TRUE)
+            glfw.post_empty_event()
+            return
+
+        id_list, mtl_list = zip(*self.bkt.grp_dict[cls_name])
+
+        self.render_lock.acquire()
+        self.del_set = set(idx for idx in range(len(self.scene.mesh_list)) if idx not in set(id_list))
+        self.look_at_reset()
+        self.render_name = cls_name.replace('/', '_')
+        print(self.del_set)
         glfw.post_empty_event()
+
+        for c in range(CLUSTER_DIM):
+            self.render_lock.acquire()
+            self.look_at_cls(cls_name, c)
+            self.render_name = cls_name.replace('/', '_') + '_look{}+'.format(c)
+            glfw.post_empty_event()
+
+            self.render_lock.acquire()
+            self.initial_look_at = -self.initial_look_at
+            self.render_name = cls_name.replace('/', '_') + '_look{}-'.format(c)
+            glfw.post_empty_event()
 
     def __init__(self, scene: Wavefront):
         self.bkt = BkThread(scene.mesh_list, self)
         self.cluster_cls = None
         self.cluster_id = None
+        self.cluster_color = False
+        self.render_lock = Lock()
+        self.render_name = None
+        self.window = None
         super().__init__(scene)
+
+    def look_at_reset(self):
+        self.rot_angle = np.array((38.0, -17.0), dtype=np.float32)
+        self.initial_look_at = np.array((0, 0, 3), dtype=np.float32)
+        self.up_vector = np.array((0, 1, 0), dtype=np.float32)
 
     def look_at_cls(self, cls_name, cid=0):
         if cls_name not in self.bkt.grp_dict:
@@ -90,7 +125,7 @@ class ClsObj(ShowObj):
         vv = do_norm_calc(mtl_list, label_list)
         area, vv = vv[cid]
         vv /= norm(vv)
-        self.initial_look_at = 4 * vv
+        self.initial_look_at = 3 * vv
         vx, vy, vz = vv
         if vx != 0 or vz != 0:
             self.up_vector = np.array((0, 1, 0), dtype=np.float32)
@@ -151,7 +186,7 @@ class ClsObj(ShowObj):
         else:
             glDisable(GL_LIGHTING)
 
-        if vertex_format == GL_C4F_N3F_V3F:
+        if vertex_format == GL_C4F_N3F_V3F and self.cluster_color:
             glEnable(GL_COLOR_MATERIAL)
 
         glInterleavedArrays(vertex_format, 0, material.gl_floats)
@@ -163,12 +198,23 @@ class ClsObj(ShowObj):
         glPopClientAttrib()
 
     def window_load(self, window):
+        self.render_lock.acquire()
+        self.look_at_reset()
+        self.render_name = 'render'
+        self.window = window
         self.bkt.start()
 
     def show_obj(self):
         super().show_obj()
         self.bkt.can_exit = True
         self.bkt.join()
+
+    def draw_model(self):
+        super().draw_model()
+        if self.render_lock.locked():
+            img = self.save_to_buffer()
+            self.render_lock.release()
+            imwrite('{}.png'.format(self.render_name), img)
 
 
 def main(idx):

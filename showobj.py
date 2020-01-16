@@ -1,15 +1,13 @@
 import glfw
+import numpy as np
 from pyglet.gl import *
 from pywavefront.visualization import draw_material
 from pywavefront.wavefront import Wavefront
-import numpy as np
-
+from imageio import imwrite
 
 class ShowObj:
     def __init__(self, scene: Wavefront):
         self.scene = scene
-        self.rot_angle = np.array((38.0, -17.0), dtype=np.float32)
-        self.rot_angle_old = self.rot_angle
         self.cur_pos_old = (0.0, 0.0)
         self.cur_rot_mode = False
         self.cur_sel_idx = (GLubyte * 1)(0xFF)
@@ -19,7 +17,9 @@ class ShowObj:
         self.viewport = (GLint * 4)()
         self.result = 0
         self.scale = 1
-        self.initial_look_at = np.array((0, 0, 4), dtype=np.float32)
+        self.rot_angle = np.array((38.0, -17.0), dtype=np.float32)
+        self.rot_angle_old = self.rot_angle
+        self.initial_look_at = np.array((0, 0, 3), dtype=np.float32)
         self.up_vector = np.array((0, 1, 0), dtype=np.float32)
 
     def perspective(self):
@@ -86,7 +86,7 @@ class ShowObj:
         for idx, mesh in enumerate(self.scene.mesh_list):
             if idx in self.del_set:
                 continue
-            glStencilFunc(GL_ALWAYS, idx+1, 0xFF)  # Set any stencil to 1
+            glStencilFunc(GL_ALWAYS, idx + 1, 0xFF)  # Set any stencil to 1
             glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
             glStencilMask(0xFF)  # Write to stencil buffer
             for material in mesh.materials:
@@ -152,6 +152,9 @@ class ShowObj:
                 if cur_idx == 0xff:
                     return
                 self.do_part(cur_idx)
+            elif key == glfw.KEY_S:
+                img = self.save_to_buffer()
+                imwrite('render.png', img)
 
     def window_size_fun(self, window, width, height):
         glViewport(0, 0, width, height)
@@ -199,3 +202,10 @@ class ShowObj:
 
     def do_part(self, partid):
         pass
+
+    def save_to_buffer(self):
+        x, y, width, height = self.viewport
+        buf = (GLubyte * (width * height * 3))(0)
+        glReadPixels(x, y, width, height, GL_RGB, GL_UNSIGNED_BYTE, buf)
+        buf = np.ctypeslib.as_array(buf).reshape((height, width, 3))
+        return np.flip(buf, axis=0)
