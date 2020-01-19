@@ -61,7 +61,7 @@ class ShowObj:
         light_ambient = (GLfloat * 4)(0.2, 0.2, 0.2, 1.0)
         light_diffuse = (GLfloat * 4)(1.0, 1.0, 1.0, 1.0)
         light_specular = (GLfloat * 4)(1.0, 1.0, 1.0, 1.0)
-        light_position = (GLfloat * 4)(0.0, 4.0, 0.0, 0.0)
+        light_position = (GLfloat * 4)(0.0, 4.0, 3.0, 0.0)
 
         glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient)
         glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse)
@@ -91,7 +91,7 @@ class ShowObj:
             glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
             glStencilMask(0xFF)  # Write to stencil buffer
             for material in mesh.materials:
-                material.ambient = [1.0, 1.0, 1.0, 1.0]
+                material.ambient = [0.6, 0.6, 0.6, 1.0]
                 if idx == cur_idx and cur_idx != self.invalid_cur_idx:
                     material.ambient = [0.0, 1.0, 1.0, 1.0]
                 elif idx in self.sel_set:

@@ -119,6 +119,8 @@ class ClsObj(ShowObj):
         im_id = self.dblist[self.imageid]
         im_file = os.path.join(conf.data_dir, "{}.obj".format(im_id))
         scene = Wavefront(im_file)
+        for material in scene.materials.values():
+            material.ambient = [0.2, 0.2, 0.2, 1.0]
         self.bkt = BkThread(scene.mesh_list, self)
         return scene
 
