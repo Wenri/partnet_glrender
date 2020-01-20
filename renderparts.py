@@ -1,5 +1,4 @@
 import os
-from operator import itemgetter
 from threading import Lock
 
 import glfw
@@ -10,16 +9,18 @@ from pyglet.gl import *
 from pywavefront import Wavefront
 from pywavefront.visualization import gl_light
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.preprocessing import normalize
 
 from cfgreader import conf
 from clusterpartnet import BkThread, CLUSTER_DIM
 from showobj import ShowObj
 
 
-def triangle_area(a):
-    a = np.square(a - np.roll(a, 1, axis=1))
-    a = np.sqrt(np.sum(a, axis=2))
+def triangle_area(a, pnorm=None):
+    a = a - np.roll(a, 1, axis=1)
+    if pnorm is not None:
+        pnorm = pnorm / norm(pnorm)
+        a = a - a * pnorm * pnorm
+    a = np.sqrt(np.sum(np.square(a), axis=2))
     p = np.sum(a, axis=1) / 2
     a, b, c = a.T
     s = p * (p - a) * (p - b) * (p - c)
@@ -27,38 +28,56 @@ def triangle_area(a):
     return np.sqrt(s)
 
 
-def best_medoids(a):
-    area_score = a[:, 3]
-    area = np.sum(area_score)
+def best_medoids(p, area_ratio=0.5, sign_norm=None):
+    a = p[:, :, :3]
+    a = np.mean(a / norm(a, axis=2, keepdims=True), axis=1)
+    area_score = triangle_area(p[:, :, 3:])
+    total_area = np.sum(area_score)
     area_score = area_score / np.sum(area_score)
-    a = a[:, :3]
-    sim_score = area_score * np.abs(cosine_similarity(a)) @ area_score
-    idx = np.argmax(sim_score)
-    return area, a[idx]
-
-
-def best_mean(a):
-    area_score = a[:, 3]
-    area = np.sum(area_score)
-    area_score = area_score / np.sum(area_score)
-    a = a[:, :3] * area_score[:, np.newaxis]
-    return area, np.mean(a, axis=0)
+    num = len(area_score)
+    if area_ratio < 1:
+        idx = np.argsort(area_score * np.abs(cosine_similarity(a)) @ area_score)
+        for num, area in enumerate(np.cumsum(area_score[idx])):
+            if area >= area_ratio:
+                break
+        num += 1
+    else:
+        idx = np.arange(num)
+    a = a[idx[:num]]
+    if sign_norm is None:
+        sign_norm = a[0]
+    signs = np.sign(np.dot(a, sign_norm))
+    a = a * signs[:, np.newaxis]
+    area_score = area_score[idx[:num]]
+    pnorm = np.sum(a * area_score[:, np.newaxis], axis=0) / np.sum(area_score)
+    proj_area = np.sum(triangle_area(p[:, :, 3:], pnorm))
+    return total_area, proj_area, pnorm
 
 
 def do_norm_calc(mtl_list, label_list):
     all_vertices = [list() for _ in range(CLUSTER_DIM)]
     for material, label in zip(mtl_list, label_list):
-        la, c, p = np.asanyarray(label, dtype=np.int32).reshape([-1, 3]).T
-        assert np.all(la == c) and np.all(la == p)
-        a = np.asanyarray(material.vertices, dtype=np.float32).reshape([-1, 6])
-        p = triangle_area(np.reshape(a[:, 3:], (-1, 3, 3)))
-        a = np.reshape(normalize(a[:, :3]), (-1, 3, 3))
-        a = np.concatenate((np.mean(a, axis=1), p[:, np.newaxis]), axis=1)
+        la, a, c = np.asanyarray(label, dtype=np.int32).reshape([-1, 3]).T
+        assert np.all(la == a) and np.all(la == c)
+        a = np.asanyarray(material.vertices, dtype=np.float32).reshape([-1, 3, 6])
         for c, vertices in enumerate(all_vertices):
-            vertices.append(a[la == c])
+            vertices.append(a[c == la])
 
     ret = [best_medoids(a) for a in map(np.concatenate, all_vertices)]
-    ret.sort(key=itemgetter(0), reverse=True)
+
+    for i in range(CLUSTER_DIM):
+        pi, ni = (i - 1) % CLUSTER_DIM, (i + 1) % CLUSTER_DIM
+        vertices = np.concatenate(all_vertices[pi] + all_vertices[ni])
+        pn, nn = ret[pi][2], ret[ni][2]
+        pn, nn = pn / norm(pn), nn / norm(nn)
+        pn, nn = pn + nn, pn - nn
+        aret, bret = (best_medoids(vertices, sign_norm=n) for n in (pn, nn))
+        if aret[1] >= bret[1]:
+            ret.append(aret)
+        else:
+            ret.append(bret)
+        pass
+
     return ret
 
 
@@ -73,8 +92,18 @@ class ClsObj(ShowObj):
         'T2F_N3F_V3F': GL_T2F_N3F_V3F,
         'T2F_C4F_N3F_V3F': GL_T2F_C4F_N3F_V3F,
     }
+    CLS_COLOR = ['R', 'G', 'B', 'GB', 'RB', 'RG']
 
     def __call__(self, cls_name: str, *args, **kwargs):
+        if cls_name:
+            id_list, mtl_list = zip(*self.bkt.grp_dict[cls_name])
+            label_list = [self.bkt.result_list[idx] for idx in id_list]
+            self.cluster_norm[cls_name] = do_norm_calc(mtl_list, label_list)
+
+        if self.cluster_color:
+            glfw.post_empty_event()
+            return
+
         if not cls_name:
             self.render_lock.acquire()
             self.result = 1
@@ -92,15 +121,15 @@ class ClsObj(ShowObj):
         print(self.del_set)
         glfw.post_empty_event()
 
-        for c in range(CLUSTER_DIM):
+        for c in range(2 ** CLUSTER_DIM - 2):
             self.render_lock.acquire()
             self.look_at_cls(cls_name, c)
-            self.render_name = cls_name.replace('/', '_') + '_look{}+'.format(c)
+            self.render_name = cls_name.replace('/', '_') + '_look_{}+'.format(self.CLS_COLOR[c])
             glfw.post_empty_event()
 
             self.render_lock.acquire()
             self.initial_look_at = -self.initial_look_at
-            self.render_name = cls_name.replace('/', '_') + '_look{}-'.format(c)
+            self.render_name = cls_name.replace('/', '_') + '_look_{}-'.format(self.CLS_COLOR[c])
             glfw.post_empty_event()
 
     def __init__(self, dblist):
@@ -110,6 +139,7 @@ class ClsObj(ShowObj):
         self.cluster_cls = None
         self.cluster_id = None
         self.cluster_color = False
+        self.cluster_norm = dict()
         self.render_lock = None
         self.render_name = None
         self.window = None
@@ -130,13 +160,11 @@ class ClsObj(ShowObj):
         self.up_vector = np.array((0, 1, 0), dtype=np.float32)
 
     def look_at_cls(self, cls_name, cid=0):
-        if cls_name not in self.bkt.grp_dict:
+        if cls_name not in self.cluster_norm:
             print("Not finished!")
             return
-        id_list, mtl_list = zip(*self.bkt.grp_dict[cls_name])
-        label_list = [self.bkt.result_list[idx] for idx in id_list]
-        vv = do_norm_calc(mtl_list, label_list)
-        area, vv = vv[cid]
+        vv = self.cluster_norm[cls_name]
+        area, parea, vv = vv[cid]
         vv /= norm(vv)
         self.initial_look_at = 3 * vv
         vx, vy, vz = vv
@@ -146,7 +174,7 @@ class ClsObj(ShowObj):
             self.up_vector = np.array((1, 0, 0), dtype=np.float32)
         self.rot_angle[0] = 0
         self.rot_angle[1] = 0
-        print(area, vv)
+        print("total_area {} projected_area {}".format(area, parea), vv)
 
     def do_part(self, partid):
         mesh = self.scene.mesh_list[partid]
@@ -161,11 +189,11 @@ class ClsObj(ShowObj):
         if self.cluster_cls != cls_name:
             self.cluster_cls = cls_name
             self.cluster_id = 0
-        elif self.cluster_id >= 2:
+        elif self.cluster_id >= 5:
             self.cluster_id = 0
         else:
             self.cluster_id += 1
-        print("> {}({}):".format(cls_name, self.cluster_id), end=' ')
+        print("> {}({}):".format(cls_name, self.CLS_COLOR[self.cluster_id]), end=' ')
         self.look_at_cls(cls_name, self.cluster_id)
 
     def draw_material(self, idx, material, face=GL_FRONT_AND_BACK, lighting_enabled=True, textures_enabled=True):
@@ -212,13 +240,14 @@ class ClsObj(ShowObj):
 
     def window_load(self, window):
         self.render_lock = Lock()
-        self.render_lock.acquire()
-        self.del_set = set()
-        self.sel_set = set()
-        self.look_at_reset()
-        self.render_name = 'render'
         self.window = window
         self.result = 0
+        if not self.cluster_color:
+            self.render_lock.acquire()
+            self.del_set = set()
+            self.sel_set = set()
+            self.render_name = 'render'
+        self.look_at_reset()
         self.bkt.start()
 
     def window_closing(self, window):

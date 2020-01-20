@@ -5,13 +5,13 @@ from collections import defaultdict
 from threading import Thread, Lock
 
 import numpy as np
+from numpy.linalg import norm
 from pyglet.gl import *
 from pywavefront import Wavefront
 from pywavefront.material import Material
 from sklearn.cluster import k_means
 from sklearn.manifold import spectral_embedding
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.preprocessing import normalize
 
 from cfgreader import conf
 
@@ -32,9 +32,9 @@ class Timer(object):
 
 
 def get_normal_cls(a, max_samples=60000):
-    a = np.asanyarray(a, dtype=np.float32).reshape([-1, 6])
-    a = np.reshape(normalize(a[:, :3]), (-1, 3, 3))
-    a = np.mean(a, axis=1)
+    a = np.asanyarray(a, dtype=np.float32).reshape([-1, 3, 6])
+    a = a[:, :, :3]
+    a = np.mean(a / norm(a, axis=2, keepdims=True), axis=1)
 
     n_samples, _ = a.shape
     print("Sample Count: %d" % n_samples)
