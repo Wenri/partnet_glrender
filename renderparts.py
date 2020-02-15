@@ -138,7 +138,7 @@ class ClsObj(ShowObj):
         self.bkt = None
         self.cluster_cls = None
         self.cluster_id = None
-        self.cluster_color = False
+        self.cluster_color = True
         self.cluster_norm = dict()
         self.render_lock = None
         self.render_name = None

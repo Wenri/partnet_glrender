@@ -17,7 +17,7 @@ class ShowObj:
         self.del_set = set()
         self.viewport = (GLint * 4)()
         self.result = 0
-        self.scale = 1
+        self.scale = 2
         self.rot_angle = np.array((38.0, -17.0), dtype=np.float32)
         self.rot_angle_old = self.rot_angle
         self.initial_look_at = np.array((0, 0, 3), dtype=np.float32)
