@@ -74,29 +74,58 @@ def cvt_load_pcd(fname, faceid=3, after_merging=True, n_samples=5000):
     return ptcloud, pmcloud
 
 
-def diag_dominant(components_):
+def diag_dominant(components_, strict=False):
     maxidx = np.argmax(np.abs(components_), axis=1)
-    u, idx = np.unique(maxidx, return_index=True)
-    if u.size < maxidx.size:
-        raise DominantIncomplete(components_)
+    while True:
+        u, idx, counts = np.unique(maxidx, return_index=True, return_counts=True)
+        if u.size == maxidx.size:
+            break
+        if strict or u.size < maxidx.size - 1:
+            raise DominantIncomplete(components_)
+        else:
+            print(f'Dominant Incomplete in relax mode', file=sys.stderr)
+            dup, = u[counts > 1]
+            missing, = set(range(maxidx.size)) - set(u)
+            pending = np.flatnonzero(maxidx == dup)
+            value = np.argmax(np.abs(components_[pending, missing]))
+            maxidx[pending[value]] = missing
+
     components_ = components_[idx, :]
     components_ *= np.sign(np.diagonal(components_))
+
+    assert np.abs(np.linalg.det(components_) - 1) < 1e-4
+
     return components_
 
 
-def axis_align(a):
-    pca = PCA()
-    pca.fit(np.asarray(a))
+class AxisAlign(object):
+    def __init__(self, a, pca_approx=True):
+        pca = PCA()
+        pca.fit(np.asarray(a))
+        self._components = None
+        self._mean = pca.mean_
+        self._result = None
 
-    a -= pca.mean_
-    try:
-        components_ = diag_dominant(pca.components_)
-    except DominantIncomplete as e:
-        print(f'Dominant Incomplete in {e.components}, retring using MinBBOX', file=sys.stderr)
-        minbbox = Minboundbox()
-        components_ = diag_dominant(minbbox(a).result())
+        if pca_approx:
+            try:
+                self._components = diag_dominant(pca.components_, strict=True)
+            except DominantIncomplete as e:
+                print(f'Dominant Incomplete in {e.components}, retrying using MinBBOX', file=sys.stderr)
+                pca_approx = False
 
-    return components_, pca.mean_
+        if not pca_approx:
+            minbbox = Minboundbox()
+            self._result = minbbox(a)
+
+    @property
+    def components(self):
+        if self._components is None:
+            self._components = diag_dominant(self._result.result())
+        return self._components
+
+    @property
+    def mean(self):
+        return self._mean
 
 
 class PCMatch(object):
@@ -104,14 +133,17 @@ class PCMatch(object):
         self.arrays = list(arrays)
 
     def scale_match(self):
+        ax = AxisAlign(np.concatenate(self.arrays, axis=0))
         ptarray, pmarray = (np.asarray(a) for a in self.arrays)
+        ptarray = ptarray @ ax.components.T
+        pmarray = pmarray @ ax.components.T
 
         ptlen = np.max(ptarray, axis=0) - np.min(ptarray, axis=0)
         pmlen = np.max(pmarray, axis=0) - np.min(pmarray, axis=0)
         scale = ptlen / pmlen
 
         pmarray *= scale
-        self.arrays[1] = pmarray
+        self.arrays = [ptarray, pmarray]
         return scale
 
     def icp_match(self):
@@ -124,41 +156,36 @@ class PCMatch(object):
         self.arrays[1] = np.asarray(estimate)
         return transf, fitness
 
-    def axis_match(self, arrayid):
-        a = self.arrays[arrayid]
-        ptcomp, ptmean = axis_align(a)
+    def axis_match(self, *arrayid):
+        aligns = [AxisAlign(self.arrays[i], pca_approx=False) for i in arrayid]
 
-        ptdet = np.linalg.det(ptcomp)
+        for id, align in zip(arrayid, aligns):
+            ptcomp, ptmean = align.components, align.mean
+            a = self.arrays[id]
 
-        print(f'{ptcomp=}')
-        print(f'{ptdet=}')
+            print(f'{ptcomp=} {id=}')
 
-        assert np.abs(ptdet - 1) < 1e-4
+            a -= ptmean
+            self.arrays[id] = a @ ptcomp.T
 
-        a -= ptmean
-        self.arrays[arrayid] = a @ ptcomp.T
-
-        return ptcomp, ptmean
-
-    def icpf_match(self):
+    def icpf_match(self, registration='Affine'):
         ptarray, pmarray = (np.asarray(a) for a in self.arrays)
         icpf = ICP_finite()
-        estimate, transf = icpf(ptarray, pmarray, Registration='Affine').result()
+        estimate, transf = icpf(ptarray, pmarray, Registration=registration).result()
         print(f'{transf=}')
 
         self.arrays[1] = np.asarray(estimate)
         return transf
+
 
 def main(idx):
     pcm = PCMatch(*cvt_load_pcd(conf.dblist[idx]))
 
     MatlabEngine.start()
 
-    pcm.axis_match(0)
+    pcm.axis_match(0, 1)
 
-    for epoch in range(10):
-        pcm.axis_match(1)
-
+    for epoch in range(5):
         for i in range(10):
             scale = pcm.scale_match()
             transf, fitness = pcm.icp_match()
@@ -167,7 +194,7 @@ def main(idx):
 
         for i in range(10):
             scale = pcm.scale_match()
-            transf = pcm.icpf_match()
+            transf = pcm.icpf_match(registration='Affine')
             if np.sum(np.abs(transf - np.eye(4))) < 1e-4:
                 break
 

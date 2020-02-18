@@ -17,6 +17,7 @@ class MatlabEngine(object):
     @classmethod
     def engine_instance(cls, instance):
         if cls.m_eng[instance] is None:
+            print(f'starting new matlab {instance=}')
             cls.m_eng[instance] = matlab.engine.start_matlab(background=True)
         return cls.m_eng[instance]
 
@@ -47,7 +48,7 @@ class Minboundbox(MatlabEngine):
     def __call__(self, a):
         # rotmat, cornerpoints, volume, surface, edgelength
         a = matlab.double(np.asarray(a).T)
-        self.ret = self.eng.minboundbox(a[0], a[1], a[2], 'v', 1,
+        self.ret = self.eng.minboundbox(a[0], a[1], a[2], 'v', 3,
                                         background=True, nargout=1)
         return self
 
