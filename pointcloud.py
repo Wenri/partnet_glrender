@@ -7,7 +7,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 from cfgreader import conf
 from matlabengine import MatlabEngine
-from pcmatch import PCMatch, arr_to_ptcloud
+from pcmatch import PCMatch
 
 
 def cvt_obj2pcd(file, outdir, argv0='pcl_mesh_sampling', **kwargs):
@@ -53,37 +53,22 @@ def cvt_load_pcd(fname, faceid=3, after_merging=True, n_samples=5000):
 def main(idx):
     pcm = PCMatch(*cvt_load_pcd(conf.dblist[idx]))
 
-    print(len(pcm.rotmatrix))
-    return
-
     MatlabEngine.start()
     fig = pyplot.figure()
     ax = Axes3D(fig)
 
     pcm.axis_match(1, 0)
+    pcm.rotmatrix_match()
 
-    # scale = pcm.scale_match()
-    # ax.scatter(*np.asarray(pcm.arrays[1]).T, s=1, marker='.', color='b')
-
-    # pcm.rotmatrix()
-
-    for epoch in range(1):
-        for iter in range(3):
-            scale = pcm.scale_match(coaxis=True)
-            transf, fitness = pcm.icp_match()
-
-        transf = pcm.icpf_match(registration='Affine')
+    #ax.scatter(*np.asarray(pcm.arrays[1]).T, s=1, marker='.', color='b')
 
     ptarray, pmarray = (np.asarray(a) for a in pcm.arrays)
 
     ax.scatter(*ptarray.T, s=1, marker='.', color='g')
     ax.scatter(*pmarray.T, s=1, marker='.', color='r')
 
-    cch = pclsimilarity(arr_to_ptcloud(ptarray), arr_to_ptcloud(pmarray))
-    print(f'{cch=}')
-
     pyplot.show()
 
 
 if __name__ == '__main__':
-    main(1)
+    main(0)

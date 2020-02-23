@@ -10,6 +10,7 @@ from sklearn.decomposition import PCA
 pyximport.install(language_level=3)
 
 from matlabengine import Minboundbox, ICP_finite
+from pcmetric import pclsimilarity
 
 
 class Error(Exception):
@@ -109,7 +110,7 @@ def generate_rotmatrix():
 
 
 class PCMatch(object):
-    rotmatrix = generate_rotmatrix()
+    _rotmatrix = generate_rotmatrix()
 
     def __init__(self, *arrays):
         self.arrays = list(arrays)
@@ -161,3 +162,24 @@ class PCMatch(object):
 
         self.arrays[1] = np.asarray(estimate)
         return transf
+
+    def rotmatrix_match(self):
+        pmarray = self.arrays[1]
+        sim_min = None
+        pm_min = None
+        for matrix in self._rotmatrix:
+            self.arrays[1] = np.matmul(pmarray, matrix.T)
+            for iter in range(3):
+                self.scale_match(coaxis=True)
+                self.icp_match()
+            self.icpf_match(registration='Affine')
+            sim = self.similarity()
+            if not sim_min or sim < sim_min:
+                sim_min = sim
+                pm_min = self.arrays[1]
+        self.arrays[1] = pm_min
+        return sim_min
+
+    def similarity(self):
+        clouds = (arr_to_ptcloud(a) for a in self.arrays)
+        return pclsimilarity(*clouds)
