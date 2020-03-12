@@ -61,18 +61,21 @@ def diag_dominant(components_, strict=False):
 
 class AxisAlign(object):
     def __init__(self, a, pca_approx=True):
-        pca = PCA()
-        pca.fit(np.asarray(a))
         self._components = None
-        self._mean = pca.mean_
         self._result = None
+        self._mean = None
 
         if pca_approx:
+            pca = PCA()
+            pca.fit(np.asarray(a))
+            self._mean = pca.mean_
             try:
                 self._components = diag_dominant(pca.components_, strict=True)
             except DominantIncomplete as e:
                 print(f'Dominant Incomplete in {e.components}, retrying using MinBBOX', file=sys.stderr)
                 pca_approx = False
+        else:
+            self._mean = np.mean(np.asarray(a), axis=0)
 
         if not pca_approx:
             minbbox = Minboundbox()
@@ -96,13 +99,12 @@ def generate_rotmatrix():
     def m_iter_deg(*deg_list):
         for deg in deg_list:
             yield from m_xyz(deg)
-            yield from m_xyz(-deg)
 
     def chaindedup(*mat_list):
         mats = set(np.asarray(a, dtype=np.int).tobytes('C') for a in chain(*mat_list))
         return [np.reshape(np.frombuffer(buf, dtype=np.int), (3, 3), order='C') for buf in mats]
 
-    base = chaindedup(m_iter_deg(0, 90, 180))
+    base = chaindedup(m_iter_deg(0, 90, 180, 270))
     level2 = chaindedup(np.matmul(y, x) for x, y in product(base, repeat=2))
     level3 = chaindedup(np.matmul(y, x) for x, y in product(level2, base))
 
@@ -114,6 +116,17 @@ class PCMatch(object):
 
     def __init__(self, *arrays):
         self.arrays = list(arrays)
+
+    def center_match(self):
+        ptarray, pmarray = (np.asarray(a) for a in self.arrays)
+
+        ptarray -= np.mean(ptarray, axis=0)
+        pmarray -= np.mean(pmarray, axis=0)
+
+        m = R.from_euler('y', 45, degrees=True).as_matrix()
+        m = R.from_euler('z', 15, degrees=True).as_matrix() @ m
+
+        self.arrays = [ptarray, pmarray @ m.T]
 
     def scale_match(self, coaxis=False):
         ptarray, pmarray = (np.asarray(a) for a in self.arrays)
@@ -177,6 +190,7 @@ class PCMatch(object):
             if not sim_min or sim < sim_min:
                 sim_min = sim
                 pm_min = self.arrays[1]
+            print(f'similarity {sim=}')
         self.arrays[1] = pm_min
         return sim_min
 

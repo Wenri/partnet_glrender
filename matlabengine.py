@@ -55,7 +55,7 @@ class Minboundbox(MatlabEngine):
     def result(self):
         if self.ret is None:
             return None
-        return mat_to_ndarray(self.ret.result())
+        return np.transpose(mat_to_ndarray(self.ret.result()))
 
 
 class ICP_finite(MatlabEngine):

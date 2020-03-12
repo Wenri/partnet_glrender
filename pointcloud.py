@@ -4,6 +4,7 @@ import numpy as np
 import pcl
 from matplotlib import pyplot
 from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 from cfgreader import conf
 from matlabengine import MatlabEngine
@@ -27,7 +28,7 @@ def cvt_obj2pcd(file, outdir, argv0='pcl_mesh_sampling', **kwargs):
     return os.spawnvp(os.P_WAIT, argv0, argv)
 
 
-def cvt_load_pcd(fname, faceid=3, after_merging=True, n_samples=5000):
+def cvt_load_pcd(fname, faceid=3, after_merging=True, n_samples=10000):
     p_dir = os.path.join(conf.pcd_dir, fname)
     ret = cvt_obj2pcd(os.path.join(conf.data_dir, fname + '.obj'),
                       p_dir, n_samples=n_samples, leaf_size=0.001)
@@ -57,18 +58,32 @@ def main(idx):
     fig = pyplot.figure()
     ax = Axes3D(fig)
 
+    # pcm.center_match()
+    # pcm.scale_match(coaxis=False)
     pcm.axis_match(1, 0)
-    pcm.rotmatrix_match()
+    pcm.scale_match(coaxis=False)
+    # pcm.rotmatrix_match()
 
-    #ax.scatter(*np.asarray(pcm.arrays[1]).T, s=1, marker='.', color='b')
+    # ax.scatter(*np.asarray(pcm.arrays[1]).T, s=1, marker='.', color='b')
+
+    # for iter in range(3):
+    #     pcm.scale_match(coaxis=False)
+    #     pcm.icp_match()
+    #
+    # for iter in range(3):
+    #     pcm.scale_match(coaxis=False)
+    #     pcm.icpf_match(registration='Affine')
 
     ptarray, pmarray = (np.asarray(a) for a in pcm.arrays)
 
     ax.scatter(*ptarray.T, s=1, marker='.', color='g')
     ax.scatter(*pmarray.T, s=1, marker='.', color='r')
 
+    for axis_name in 'xyz':
+        getattr(ax, 'set_%slim3d' % axis_name)(-1, 1)
+
     pyplot.show()
 
 
 if __name__ == '__main__':
-    main(0)
+    main(1)
