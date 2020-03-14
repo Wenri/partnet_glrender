@@ -62,8 +62,9 @@ def diag_dominant(components_, strict=False):
 class AxisAlign(object):
     def __init__(self, a, pca_approx=True):
         self._components = None
-        self._result = None
+        self._minbbox = None
         self._mean = None
+        self._corner_points = None
 
         if pca_approx:
             pca = PCA()
@@ -78,14 +79,20 @@ class AxisAlign(object):
             self._mean = np.mean(np.asarray(a), axis=0)
 
         if not pca_approx:
-            minbbox = Minboundbox()
-            self._result = minbbox(a)
+            self._minbbox = Minboundbox(a)
 
     @property
     def components(self):
         if self._components is None:
-            self._components = diag_dominant(self._result.result())
+            rot_matrix, _ = self._minbbox()
+            self._components = diag_dominant(rot_matrix)
         return self._components
+
+    @property
+    def corner_points(self):
+        if self._corner_points is None:
+            _, self._corner_points = self._minbbox()
+        return self._corner_points
 
     @property
     def mean(self):
@@ -169,8 +176,8 @@ class PCMatch(object):
 
     def icpf_match(self, registration='Affine'):
         ptarray, pmarray = (np.asarray(a) for a in self.arrays)
-        icpf = ICP_finite()
-        estimate, transf = icpf(ptarray, pmarray, Registration=registration).result()
+        icpf = ICP_finite(ptarray, pmarray, Registration=registration)
+        estimate, transf = icpf()
         print(f'{transf=}')
 
         self.arrays[1] = np.asarray(estimate)

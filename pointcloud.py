@@ -64,15 +64,15 @@ def main(idx):
     pcm.scale_match(coaxis=False)
     # pcm.rotmatrix_match()
 
-    # ax.scatter(*np.asarray(pcm.arrays[1]).T, s=1, marker='.', color='b')
+    ax.scatter(*np.asarray(pcm.arrays[1]).T, s=1, marker='.', color='b')
 
-    # for iter in range(3):
-    #     pcm.scale_match(coaxis=False)
-    #     pcm.icp_match()
-    #
-    # for iter in range(3):
-    #     pcm.scale_match(coaxis=False)
-    #     pcm.icpf_match(registration='Affine')
+    for iter in range(3):
+        pcm.scale_match(coaxis=False)
+        pcm.icp_match()
+
+    for iter in range(3):
+        pcm.scale_match(coaxis=False)
+        pcm.icpf_match(registration='Affine')
 
     ptarray, pmarray = (np.asarray(a) for a in pcm.arrays)
 
@@ -86,4 +86,4 @@ def main(idx):
 
 
 if __name__ == '__main__':
-    main(1)
+    main(0)
