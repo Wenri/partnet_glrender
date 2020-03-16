@@ -81,17 +81,20 @@ class AxisAlign(object):
         if not pca_approx:
             self._minbbox = Minboundbox(a)
 
+    def _eval_results(self):
+        rot_matrix, self._corner_points = self._minbbox
+        self._components = diag_dominant(rot_matrix.T)
+
     @property
     def components(self):
         if self._components is None:
-            rot_matrix, _ = self._minbbox()
-            self._components = diag_dominant(rot_matrix)
+            self._eval_results()
         return self._components
 
     @property
     def corner_points(self):
         if self._corner_points is None:
-            _, self._corner_points = self._minbbox()
+            self._eval_results()
         return self._corner_points
 
     @property
@@ -176,8 +179,7 @@ class PCMatch(object):
 
     def icpf_match(self, registration='Affine'):
         ptarray, pmarray = (np.asarray(a) for a in self.arrays)
-        icpf = ICP_finite(ptarray, pmarray, Registration=registration)
-        estimate, transf = icpf()
+        estimate, transf = ICP_finite(ptarray, pmarray, Registration=registration)
         print(f'{transf=}')
 
         self.arrays[1] = np.asarray(estimate)

@@ -3,60 +3,74 @@ import numpy as np
 import os
 from functools import partial
 
+m2np_types = (matlab.double, matlab.single, matlab.int64,
+              matlab.int32, matlab.int16, matlab.int8,
+              matlab.uint64, matlab.uint32, matlab.uint16,
+              matlab.uint8)
+
 
 def m2np(x):
-    return np.asarray(x._data).reshape(x.size, order='F')
+    if isinstance(x, m2np_types):
+        return np.asarray(x._data).reshape(x.size, order='F')
+    else:
+        return x
 
 
 class MatlabEngine(object):
     m_eng = [None for _ in range(2)]
     m_cur = 0
     source_path = os.path.dirname(os.path.abspath(__file__))
+    gen_path = [f.path for f in os.scandir(source_path)
+                if f.is_dir() and not f.name.startswith('.')]
+    start_matlab = partial(matlab.engine.start_matlab, background=True)
 
     @classmethod
     def start(cls, count=1):
-        if not count or count < 0 or count >= len(cls.m_eng):
-            count = len(cls.m_eng)
+        assert 0 < count <= len(cls.m_eng)
+        print(f'launching matlab {count=}')
         for i in range(count):
             if cls.m_eng[i] is None:
-                cls.engine_instance(i)
+                cls.m_eng[i] = cls.start_matlab()
 
     @classmethod
-    def engine_instance(cls, instance):
-        if cls.m_eng[instance] is None:
-            print(f'starting new matlab {instance=}')
-            cls.m_eng[instance] = matlab.engine.start_matlab(background=True)
-        return cls.m_eng[instance]
-
-    @classmethod
-    def increment_cur(cls):
+    def assign_instance(cls):
+        _eng = cls.m_eng[cls.m_cur]
+        if _eng is None:
+            print(f'starting extra matlab {cls.m_cur=}')
+            _eng = cls.start_matlab()
+        if isinstance(_eng, matlab.engine.FutureResult):
+            _eng = _eng.result()
+            _eng.addpath(*cls.gen_path)
+            cls.m_eng[cls.m_cur] = _eng
         cls.m_cur = (cls.m_cur + 1) % len(cls.m_eng)
-
-    @property
-    def eng(self):
-        if self._eng is None:
-            self._eng = self.engine_instance(self.m_cur)
-            self.increment_cur()
-        genpath = (f.path for f in os.scandir(self.source_path)
-                   if f.is_dir() and not f.name.startswith('.'))
-        eng = self._eng.result()
-        eng.addpath(*genpath)
-        return eng
+        return _eng
 
     def __init__(self, nargout=1):
-        self._eng = None
+        self._eng = self.assign_instance()
         self._ret = None
-        self._nargout = nargout
+        self.nargout = nargout
 
     def __iter__(self):
-        return self
-
-    def __next__(self):
-        return
+        if self.nargout > 1:
+            for v in self.result:
+                yield m2np(v)
+        else:
+            yield m2np(self.result)
 
     def __getattr__(self, item):
-        func = getattr(self.eng, item)
-        return partial(func, background=True, nargout=self._nargout)
+        func = getattr(self._eng, item)
+        func = partial(func, background=True, nargout=self.nargout)
+        return func
+
+    @property
+    def result(self):
+        if self._ret is None:
+            return None
+        return self._ret.result()
+
+    @result.setter
+    def result(self, value: matlab.engine.FutureResult):
+        self._ret = value
 
 
 class Minboundbox(MatlabEngine):
@@ -64,13 +78,7 @@ class Minboundbox(MatlabEngine):
         super().__init__(nargout=2)
         # rotmat, cornerpoints, volume, surface, edgelength
         a = matlab.double(np.asarray(a).T)
-        self._ret = self.minboundbox(a[0], a[1], a[2], 'v', 3)
-
-    def __call__(self):
-        if self._ret is None:
-            return None
-        m, corner_points = self._ret.result()
-        return np.transpose(m2np(m)), m2np(corner_points)
+        self.result = self.minboundbox(a[0], a[1], a[2], 'v', 3)
 
 
 class ICP_finite(MatlabEngine):
@@ -78,11 +86,4 @@ class ICP_finite(MatlabEngine):
         super().__init__(nargout=2)
         ptarray = matlab.double(np.asarray(ptarray))
         pmarray = matlab.double(np.asarray(pmarray))
-        self.ret = self.ICP_finite(ptarray, pmarray, options)
-        self.index = 0
-
-    def __call__(self):
-        if self.ret is None:
-            return None
-        points_moved, m = self.ret.result()
-        return m2np(points_moved), m2np(m)
+        self.result = self.ICP_finite(ptarray, pmarray, options)
