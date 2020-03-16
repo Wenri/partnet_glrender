@@ -6,10 +6,10 @@ import pyximport
 from pcl import PointCloud, GeneralizedIterativeClosestPoint
 from scipy.spatial.transform import Rotation as R
 from sklearn.decomposition import PCA
+from matlabengine import Minboundbox, ICP_finite
 
 pyximport.install(language_level=3)
 
-from matlabengine import Minboundbox, ICP_finite
 from pcmetric import pclsimilarity
 
 
@@ -29,7 +29,7 @@ class DominantIncomplete(Error):
         self.components = components
 
 
-def arr_to_ptcloud(array) -> PointCloud:
+def arr2pt(array) -> PointCloud:
     ptcloud = PointCloud()
     ptcloud.from_array(np.asarray(array, dtype=np.float32))
     return ptcloud
@@ -133,10 +133,10 @@ class PCMatch(object):
         ptarray -= np.mean(ptarray, axis=0)
         pmarray -= np.mean(pmarray, axis=0)
 
-        m = R.from_euler('y', 45, degrees=True).as_matrix()
-        m = R.from_euler('z', 15, degrees=True).as_matrix() @ m
+        # m = R.from_euler('y', 45, degrees=True).as_matrix()
+        # m = R.from_euler('z', 15, degrees=True).as_matrix() @ m
 
-        self.arrays = [ptarray, pmarray @ m.T]
+        self.arrays = [ptarray, pmarray]
 
     def scale_match(self, coaxis=False):
         ptarray, pmarray = (np.asarray(a) for a in self.arrays)
@@ -156,7 +156,7 @@ class PCMatch(object):
         return scale
 
     def icp_match(self):
-        ptcloud, pmcloud = (arr_to_ptcloud(np.asarray(a)) for a in self.arrays)
+        ptcloud, pmcloud = (arr2pt(np.asarray(a)) for a in self.arrays)
 
         icp = GeneralizedIterativeClosestPoint()
         converged, transf, estimate, fitness = icp.gicp(pmcloud, ptcloud)
@@ -176,6 +176,8 @@ class PCMatch(object):
 
             a -= ptmean
             self.arrays[id] = a @ ptcomp.T
+
+        return aligns
 
     def icpf_match(self, registration='Affine'):
         ptarray, pmarray = (np.asarray(a) for a in self.arrays)
@@ -204,5 +206,5 @@ class PCMatch(object):
         return sim_min
 
     def similarity(self):
-        clouds = (arr_to_ptcloud(a) for a in self.arrays)
+        clouds = (arr2pt(a) for a in self.arrays)
         return pclsimilarity(*clouds)

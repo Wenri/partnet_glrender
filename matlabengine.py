@@ -1,7 +1,8 @@
-import matlab.engine
-import numpy as np
 import os
 from functools import partial
+
+import matlab.engine
+import numpy as np
 
 m2np_types = (matlab.double, matlab.single, matlab.int64,
               matlab.int32, matlab.int16, matlab.int8,
@@ -16,7 +17,25 @@ def m2np(x):
         return x
 
 
-class MatlabEngine(object):
+class MatRet(object):
+    def __init__(self, result, nargout):
+        self._ret = result
+        self.nargout = nargout
+
+    def __iter__(self):
+        if self.nargout > 1:
+            for v in self.result:
+                yield m2np(v)
+        elif self.nargout == 1:
+            yield m2np(self.result)
+
+    @property
+    def result(self):
+        assert isinstance(self._ret, matlab.engine.FutureResult)
+        return self._ret.result()
+
+
+class MatEng(object):
     m_eng = [None for _ in range(2)]
     m_cur = 0
     source_path = os.path.dirname(os.path.abspath(__file__))
@@ -47,43 +66,29 @@ class MatlabEngine(object):
 
     def __init__(self, nargout=1):
         self._eng = self.assign_instance()
-        self._ret = None
         self.nargout = nargout
-
-    def __iter__(self):
-        if self.nargout > 1:
-            for v in self.result:
-                yield m2np(v)
-        else:
-            yield m2np(self.result)
 
     def __getattr__(self, item):
         func = getattr(self._eng, item)
-        func = partial(func, background=True, nargout=self.nargout)
-        return func
 
-    @property
-    def result(self):
-        if self._ret is None:
-            return None
-        return self._ret.result()
+        def func_ret(*args, nargout, **kwargs):
+            result = func(*args, nargout=nargout, **kwargs)
+            return MatRet(result, nargout)
 
-    @result.setter
-    def result(self, value: matlab.engine.FutureResult):
-        self._ret = value
+        return partial(func_ret, background=True, nargout=self.nargout)
 
 
-class Minboundbox(MatlabEngine):
-    def __init__(self, a):
-        super().__init__(nargout=2)
-        # rotmat, cornerpoints, volume, surface, edgelength
-        a = matlab.double(np.asarray(a).T)
-        self.result = self.minboundbox(a[0], a[1], a[2], 'v', 3)
+def Minboundbox(a, nargout=2):
+    """
+        rotmat, cornerpoints, volume, surface, edgelength
+    """
+    eng = MatEng(nargout)
+    a = (matlab.double(x) for x in np.asarray(a).T)
+    return eng.minboundbox(*a, 'v', 3)
 
 
-class ICP_finite(MatlabEngine):
-    def __init__(self, ptarray, pmarray, **options):
-        super().__init__(nargout=2)
-        ptarray = matlab.double(np.asarray(ptarray))
-        pmarray = matlab.double(np.asarray(pmarray))
-        self.result = self.ICP_finite(ptarray, pmarray, options)
+def ICP_finite(self, ptarray, pmarray, **options):
+    eng = MatEng(2)
+    ptarray = matlab.double(np.asarray(ptarray))
+    pmarray = matlab.double(np.asarray(pmarray))
+    return eng.ICP_finite(ptarray, pmarray, options)

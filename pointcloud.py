@@ -7,7 +7,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 from cfgreader import conf
-from matlabengine import MatlabEngine
+from matlabengine import MatEng
 from pcmatch import PCMatch
 
 
@@ -54,25 +54,25 @@ def cvt_load_pcd(fname, faceid=3, after_merging=True, n_samples=10000):
 def main(idx):
     pcm = PCMatch(*cvt_load_pcd(conf.dblist[idx]))
 
-    MatlabEngine.start()
+    MatEng.start(count=2)
     fig = pyplot.figure()
     ax = Axes3D(fig)
 
-    # pcm.center_match()
-    # pcm.scale_match(coaxis=False)
-    pcm.axis_match(1, 0)
+    pcm.center_match()
     pcm.scale_match(coaxis=False)
+    pmax, ptax = pcm.axis_match(1, 0)
+    # pcm.scale_match(coaxis=False)
     # pcm.rotmatrix_match()
-
-    ax.scatter(*np.asarray(pcm.arrays[1]).T, s=1, marker='.', color='b')
-
-    for iter in range(3):
-        pcm.scale_match(coaxis=False)
-        pcm.icp_match()
-
-    for iter in range(3):
-        pcm.scale_match(coaxis=False)
-        pcm.icpf_match(registration='Affine')
+    #
+    # ax.scatter(*np.asarray(pcm.arrays[1]).T, s=1, marker='.', color='b')
+    #
+    # for iter in range(3):
+    #     pcm.scale_match(coaxis=False)
+    #     pcm.icp_match()
+    #
+    # for iter in range(3):
+    #     pcm.scale_match(coaxis=False)
+    #     pcm.icpf_match(registration='Affine')
 
     ptarray, pmarray = (np.asarray(a) for a in pcm.arrays)
 
