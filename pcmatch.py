@@ -65,27 +65,21 @@ class AxisAlign(object):
     def __init__(self, a, pca_approx=True):
         self._components = None
         self._minbbox = None
-        self._mean = None
+        self.mean = None
         self._corner_points = None
 
         if pca_approx:
             pca = PCA()
             pca.fit(np.asarray(a))
-            self._mean = pca.mean_
-            try:
-                self._components = diag_dominant(pca.components_, strict=True)
-            except DominantIncomplete as e:
-                print(f'Dominant Incomplete in {e.components}, retrying using MinBBOX', file=sys.stderr)
-                pca_approx = False
+            self.mean, self._components = pca.mean_, pca.components_
         else:
-            self._mean = np.mean(np.asarray(a), axis=0)
+            self.mean = np.mean(np.asarray(a), axis=0)
 
         if not pca_approx:
             self._minbbox = Minboundbox(a)
 
     def _eval_results(self):
         rot_matrix, self._corner_points = self._minbbox
-        # self._components = diag_dominant(rot_matrix.T)
         self._components = rot_matrix.T
 
     @property
@@ -100,9 +94,8 @@ class AxisAlign(object):
             self._eval_results()
         return self._corner_points
 
-    @property
-    def mean(self):
-        return self._mean
+    def transform(self, a):
+        return (a - self.mean) @ self.components.T
 
 
 def generate_rotmatrix():
@@ -124,25 +117,26 @@ class PCMatch(object):
     _ROT_MATRIX: Final = generate_rotmatrix()
 
     def __init__(self, *arrays):
-        for i in self._ROT_MATRIX:
-            print(i)
-        print(len(self._ROT_MATRIX))
         self.arrays = list(arrays)
+        self._saved_arrays = []
+        self._staged_array = None
+        self.is_modified = False
 
     def center_match(self):
         ptarray, pmarray = (np.asarray(a) for a in self.arrays)
 
-        ptarray -= np.mean(ptarray, axis=0)
-        pmarray -= np.mean(pmarray, axis=0)
+        ptloc = np.max(ptarray, axis=0) + np.min(ptarray, axis=0)
+        pmloc = np.max(pmarray, axis=0) + np.min(pmarray, axis=0)
+        offset = (ptloc - pmloc) / 2
+        pmarray += offset
 
-        # m = R.from_euler('y', 45, degrees=True).as_matrix()
-        # m = R.from_euler('z', 15, degrees=True).as_matrix() @ m
-
-        self.arrays = [ptarray, pmarray]
+        self.arrays[1] = pmarray
+        return offset
 
     def scale_match(self, coaxis=False):
         ptarray, pmarray = (np.asarray(a) for a in self.arrays)
 
+        ax = None
         if coaxis:
             ax = AxisAlign(np.concatenate(self.arrays, axis=0), pca_approx=True)
             print(f'{ax.components=}')
@@ -154,8 +148,23 @@ class PCMatch(object):
         scale = ptlen / pmlen
 
         pmarray *= scale
-        self.arrays = [ptarray, pmarray]
-        return scale
+
+        scale = np.diag(scale)
+        if ax is not None:
+            pmarray = pmarray @ ax.components
+            scale = scale @ ax.components
+
+        self.arrays[1] = pmarray
+        return scale, self.center_match()
+
+    def axis_match(self, *arrayid):
+        aligns = [AxisAlign(self.arrays[i], pca_approx=False) for i in arrayid]
+
+        for id, align in zip(arrayid, aligns):
+            self.arrays[id] = align.transform(self.arrays[id])
+            print(f'{id=} {align.components=}, {align.mean=}')
+
+        return aligns
 
     def icp_match(self):
         ptcloud, pmcloud = (arr2pt(np.asarray(a)) for a in self.arrays)
@@ -167,20 +176,6 @@ class PCMatch(object):
         self.arrays[1] = np.asarray(estimate)
         return transf, fitness
 
-    def axis_match(self, *arrayid):
-        aligns = [AxisAlign(self.arrays[i], pca_approx=False) for i in arrayid]
-
-        for id, align in zip(arrayid, aligns):
-            ptcomp, ptmean = align.components, align.mean
-            a = self.arrays[id]
-
-            print(f'{ptcomp=} {id=}')
-
-            a -= ptmean
-            self.arrays[id] = a @ ptcomp.T
-
-        return aligns
-
     def icpf_match(self, registration='Affine'):
         ptarray, pmarray = (np.asarray(a) for a in self.arrays)
         estimate, transf = ICP_finite(ptarray, pmarray, Registration=registration)
@@ -191,22 +186,61 @@ class PCMatch(object):
 
     def rotmatrix_match(self):
         pmarray = self.arrays[1]
-        sim_min = None
+        sim_min = np.Inf
+        trans = None
+        offset = None
         pm_min = None
         for matrix in self._ROT_MATRIX:
-            self.arrays[1] = np.matmul(pmarray, matrix.T)
-            for iter in range(3):
-                self.scale_match(coaxis=False)
-                self.icp_match()
-            self.icpf_match(registration='Affine')
+            self.arrays[1] = pmarray @ matrix.T
+            scale, off = self.scale_match(coaxis=False)
             sim = self.similarity()
-            if not sim_min or sim < sim_min:
+            if sim < sim_min:
                 sim_min = sim
                 pm_min = self.arrays[1]
+                trans, offset = scale @ matrix, off
             print(f'similarity {sim=}')
         self.arrays[1] = pm_min
-        return sim_min
+        return sim_min, trans, offset
+
+    def register(self, n_iters=10):
+        for i in range(n_iters):
+            with self as step:
+                with step as txn1, step as txn2:
+                    txn1.scale_match(coaxis=True)
+                    txn1.icp_match()
+                    txn2.icp_match()
+                print('Optional {[scale, ]icp}_match/icp_match is done.')
+                with step as txn1, step as txn2:
+                    txn1.icpf_match(registration='Resize')
+                    txn2.icpf_match(registration='Affine')
+                print('Optional icpf_match is done.')
+            print(f'iter {i} is done.')
+            if not self.is_modified:
+                break
+        return self.similarity()
 
     def similarity(self):
         clouds = (arr2pt(a) for a in self.arrays)
         return pclsimilarity(*clouds)
+
+    def __enter__(self):
+        new_pcm = PCMatch(*self.arrays)
+        if not self._saved_arrays:
+            self.is_modified = False
+        self._saved_arrays.append(new_pcm)
+        return new_pcm
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        saved_pcm = self._saved_arrays.pop()
+
+        if self._staged_array is None or saved_pcm.similarity() < self._staged_array.similarity():
+            self._staged_array = saved_pcm
+
+        if not self._saved_arrays:
+            if self._staged_array.similarity() < self.similarity():
+                self.arrays = self._staged_array.arrays
+                self.is_modified = True
+            else:
+                print('Transaction is not better, discarding...')
+            self._staged_array = None
+
