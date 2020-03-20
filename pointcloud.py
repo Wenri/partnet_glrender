@@ -111,7 +111,10 @@ def eval_id(im_id, draw_plot=True, log_file=sys.stdout):
     for name, pcd in group_parts_pcds(im_id).items():
         ref = align0.transform(pcd)
         a = filter_region(ref, pmarray)
-        group_score[name] = pclsimilarity(arr2pt(ref), arr2pt(a))
+        if a.size:
+            group_score[name] = pclsimilarity(arr2pt(ref), arr2pt(a))
+        else:
+            group_score[name] = np.Inf
 
     if draw_plot:
         fig = pyplot.figure()
@@ -126,7 +129,7 @@ def eval_id(im_id, draw_plot=True, log_file=sys.stdout):
         pyplot.show()
 
     for cls, score in group_score.items():
-        print('Score:', cls, score, file=log_file)
+        print('Score:', cls, score, file=log_file, flush=True)
 
     results = SimpleNamespace(im_id=im_id, align1=align1, align0=align0,
                               sim_score=sim_score, rot_trans=rot_trans, offset=offset,
@@ -137,11 +140,15 @@ def eval_id(im_id, draw_plot=True, log_file=sys.stdout):
 def main():
     with open('pointcloud.log', 'w') as log_file:
         for im_id in conf.dblist:
-            results = eval_id(im_id, draw_plot=False, log_file=log_file)
-            p_dir = os.path.join(conf.pcd_dir, im_id)
-            cache_file = os.path.join(p_dir, 'result.pkl')
-            with open(cache_file, 'wb') as f:
-                pickle.dump(results, f)
+            try:
+                results = eval_id(im_id, draw_plot=False, log_file=log_file)
+                p_dir = os.path.join(conf.pcd_dir, im_id)
+                cache_file = os.path.join(p_dir, 'result.pkl')
+                with open(cache_file, 'wb') as f:
+                    pickle.dump(results, f)
+            except:
+                e = sys.exc_info()[0]
+                print("Error: %s" % e, file=log_file, flush=True)
 
 
 if __name__ == '__main__':
