@@ -1,11 +1,13 @@
 import sys
 from itertools import product, chain
+from typing import Final
 
 import numpy as np
 import pyximport
 from pcl import PointCloud, GeneralizedIterativeClosestPoint
 from scipy.spatial.transform import Rotation as R
 from sklearn.decomposition import PCA
+
 from matlabengine import Minboundbox, ICP_finite
 
 pyximport.install(language_level=3)
@@ -83,7 +85,8 @@ class AxisAlign(object):
 
     def _eval_results(self):
         rot_matrix, self._corner_points = self._minbbox
-        self._components = diag_dominant(rot_matrix.T)
+        # self._components = diag_dominant(rot_matrix.T)
+        self._components = rot_matrix.T
 
     @property
     def components(self):
@@ -104,27 +107,26 @@ class AxisAlign(object):
 
 def generate_rotmatrix():
     def m_xyz(deg):
-        return (R.from_euler(axis, deg, degrees=True).as_matrix() for axis in 'xyz')
+        return tuple(R.from_euler(axis, deg, degrees=True).as_matrix() for axis in 'xyz')
 
-    def m_iter_deg(*deg_list):
-        for deg in deg_list:
-            yield from m_xyz(deg)
+    def chaindedup(mat_list):
+        mats = set(np.asarray(a, dtype=np.int).tobytes('C') for a in mat_list)
+        return tuple(np.reshape(np.frombuffer(buf, dtype=np.int), (3, 3), order='C') for buf in mats)
 
-    def chaindedup(*mat_list):
-        mats = set(np.asarray(a, dtype=np.int).tobytes('C') for a in chain(*mat_list))
-        return [np.reshape(np.frombuffer(buf, dtype=np.int), (3, 3), order='C') for buf in mats]
-
-    base = chaindedup(m_iter_deg(0, 90, 180, 270))
+    base = chaindedup(chain.from_iterable(m_xyz(a) for a in (0, 90, 180, 270)))
     level2 = chaindedup(np.matmul(y, x) for x, y in product(base, repeat=2))
-    level3 = chaindedup(np.matmul(y, x) for x, y in product(level2, base))
+    level3 = chaindedup(np.matmul(y, x) for x, y in product(base, level2))
 
     return level3
 
 
 class PCMatch(object):
-    _rotmatrix = generate_rotmatrix()
+    _ROT_MATRIX: Final = generate_rotmatrix()
 
     def __init__(self, *arrays):
+        for i in self._ROT_MATRIX:
+            print(i)
+        print(len(self._ROT_MATRIX))
         self.arrays = list(arrays)
 
     def center_match(self):
@@ -191,10 +193,10 @@ class PCMatch(object):
         pmarray = self.arrays[1]
         sim_min = None
         pm_min = None
-        for matrix in self._rotmatrix:
+        for matrix in self._ROT_MATRIX:
             self.arrays[1] = np.matmul(pmarray, matrix.T)
             for iter in range(3):
-                self.scale_match(coaxis=True)
+                self.scale_match(coaxis=False)
                 self.icp_match()
             self.icpf_match(registration='Affine')
             sim = self.similarity()

@@ -4,7 +4,7 @@ import numpy as np
 import pcl
 from matplotlib import pyplot
 from mpl_toolkits.mplot3d import Axes3D
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from mpl_toolkits.mplot3d.art3d import Line3DCollection
 
 from cfgreader import conf
 from matlabengine import MatEng
@@ -61,8 +61,16 @@ def main(idx):
     pcm.center_match()
     pcm.scale_match(coaxis=False)
     pmax, ptax = pcm.axis_match(1, 0)
+    # tupleList = pmax.corner_points @ pmax.components.T
+    # ax.scatter(*tupleList.T, s=2, marker='+', color='b')
+    # vertices = ((0, 1, 2, 3, 0, 4, 5, 6, 7, 4),
+    #             (1, 5), (2, 6), (3, 7))
+    # poly3d = tuple(tuple(tupleList[iy] for iy in ix) for ix in vertices)
+    # line = Line3DCollection(poly3d, colors='k', linewidths=0.2, linestyles=':')
+    # ax.add_collection3d(line)
+
     # pcm.scale_match(coaxis=False)
-    # pcm.rotmatrix_match()
+    pcm.rotmatrix_match()
     #
     # ax.scatter(*np.asarray(pcm.arrays[1]).T, s=1, marker='.', color='b')
     #
@@ -86,4 +94,4 @@ def main(idx):
 
 
 if __name__ == '__main__':
-    main(0)
+    main(11)

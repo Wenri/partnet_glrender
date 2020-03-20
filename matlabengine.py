@@ -87,7 +87,7 @@ def Minboundbox(a, nargout=2):
     return eng.minboundbox(*a, 'v', 3)
 
 
-def ICP_finite(self, ptarray, pmarray, **options):
+def ICP_finite(ptarray, pmarray, **options):
     eng = MatEng(2)
     ptarray = matlab.double(np.asarray(ptarray))
     pmarray = matlab.double(np.asarray(pmarray))
