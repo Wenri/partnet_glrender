@@ -81,6 +81,7 @@ class AxisAlign(object):
     def _eval_results(self):
         rot_matrix, self._corner_points = self._minbbox
         self._components = rot_matrix.T
+        self._minbbox = None
 
     @property
     def components(self):
@@ -95,7 +96,7 @@ class AxisAlign(object):
         return self._corner_points
 
     def transform(self, a):
-        return (a - self.mean) @ self.components.T
+        return (np.asarray(a) - self.mean) @ self.components.T
 
 
 def generate_rotmatrix():
