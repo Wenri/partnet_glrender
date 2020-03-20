@@ -207,9 +207,11 @@ class PCMatch(object):
             with self as step:
                 with step as txn1, step as txn2:
                     txn1.scale_match(coaxis=True)
-                    txn1.icp_match()
+                    with txn1 as txn1a:
+                        txn1a.icp_match()
+                    print('Optional scale&icp_match is done.')
                     txn2.icp_match()
-                print('Optional {[scale, ]icp}_match/icp_match is done.')
+                print('Optional scale_match/icp_match is done.')
                 with step as txn1, step as txn2:
                     txn1.icpf_match(registration='Resize')
                     txn2.icpf_match(registration='Affine')
