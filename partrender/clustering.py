@@ -2,7 +2,7 @@ import operator
 import os
 import time
 from collections import defaultdict
-from threading import Thread, Lock
+from threading import Thread
 
 import numpy as np
 from numpy.linalg import norm
@@ -13,6 +13,7 @@ from sklearn.cluster import k_means
 from sklearn.manifold import spectral_embedding
 from sklearn.metrics.pairwise import cosine_similarity
 
+from partrender.rendering import RenderObj
 from tools.cfgreader import conf
 
 CLUSTER_DIM = 3
@@ -105,10 +106,10 @@ def save_cluster_dict(*args, im_id: str, cls_name: str, **kwargs):
 
 
 class BkThread(Thread):
-    def __init__(self, mesh_list, callback=None):
+    def __init__(self, mesh_list, lock_list, callback=None):
         self.grp_dict = defaultdict(list)
         self.mesh_list = mesh_list
-        self.lock_list = [Lock() for i in range(len(mesh_list))]
+        self.lock_list = lock_list
         self.result_list = [None for i in range(len(mesh_list))]
         self.can_exit = False
         self.callback = callback
@@ -121,18 +122,16 @@ class BkThread(Thread):
         n_vtx, _ = a.shape
         assert n_vtx == len(labels)
 
-        self.lock_list[idx].acquire(blocking=True)
+        with self.lock_list[idx]:
+            color = np.zeros(shape=(n_vtx, 4), dtype=np.float32)
+            for lbl, arr in zip(labels, color):
+                if lbl >= 0:
+                    arr[lbl] = 1
 
-        color = np.zeros(shape=(n_vtx, 4), dtype=np.float32)
-        for lbl, arr in zip(labels, color):
-            if lbl >= 0:
-                arr[lbl] = 1
+            material.gl_floats = np.concatenate((color, a), axis=1).ctypes
+            material.triangle_count = n_vtx
+            material.vertex_format = 'C4F_N3F_V3F'
 
-        material.gl_floats = np.concatenate((color, a), axis=1).ctypes
-        material.triangle_count = n_vtx
-        material.vertex_format = 'C4F_N3F_V3F'
-
-        self.lock_list[idx].release()
         self.result_list[idx] = labels
 
     def add_to_dict(self):
@@ -182,6 +181,10 @@ class BkThread(Thread):
                 self.callback(cls_name)
 
         self.callback(None)
+
+    def exit_wait(self):
+        self.can_exit = True
+        self.join()
 
 
 def main(nskip):
