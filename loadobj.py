@@ -1,21 +1,22 @@
 import os
-import numpy as np
+
 from pywavefront import Wavefront
-from showobj import ShowObj
+
 from cfgreader import conf
+from showobj import ShowObj
+
 
 def main(idx):
-    dblist=conf.read_dblist()
     while True:
-        im_id = dblist[idx]
+        im_id = conf.dblist[idx]
         im_file = os.path.join(conf.data_dir, "{}.obj".format(im_id))
         scene = Wavefront(im_file)
         show = ShowObj(scene)
         show.show_obj()
         if show.result == 1:
-            idx = min(idx+1, len(dblist)-1)
+            idx = min(idx + 1, len(conf.dblist) - 1)
         elif show.result == 2:
-            idx = max(0, idx-1)
+            idx = max(0, idx - 1)
         else:
             break
 

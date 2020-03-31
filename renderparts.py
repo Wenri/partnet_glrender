@@ -132,13 +132,12 @@ class ClsObj(ShowObj):
             self.render_name = cls_name.replace('/', '_') + '_look_{}-'.format(self.CLS_COLOR[c])
             glfw.post_empty_event()
 
-    def __init__(self, dblist):
-        self.dblist = dblist
-        self.imageid = 0
+    def __init__(self, start_id, auto_generate=False):
+        self.imageid = start_id
         self.bkt = None
         self.cluster_cls = None
         self.cluster_id = None
-        self.cluster_color = True
+        self.cluster_color = not auto_generate
         self.cluster_norm = dict()
         self.render_lock = None
         self.render_name = None
@@ -146,7 +145,7 @@ class ClsObj(ShowObj):
         super().__init__(self.load_image())
 
     def load_image(self):
-        im_id = self.dblist[self.imageid]
+        im_id = conf.dblist[self.imageid]
         im_file = os.path.join(conf.data_dir, "{}.obj".format(im_id))
         scene = Wavefront(im_file)
         for material in scene.materials.values():
@@ -252,7 +251,7 @@ class ClsObj(ShowObj):
 
     def window_closing(self, window):
         if self.result == 1:
-            self.imageid = min(self.imageid + 1, len(self.dblist) - 1)
+            self.imageid = min(self.imageid + 1, len(conf.dblist) - 1)
         elif self.result == 2:
             self.imageid = max(0, self.imageid - 1)
         else:
@@ -281,8 +280,8 @@ class ClsObj(ShowObj):
             imwrite(os.path.join(file_path, im_name), img)
 
 
-def main(idx):
-    show = ClsObj(conf.dblist)
+def main(idx, autogen=True):
+    show = ClsObj(idx, autogen)
     show.show_obj()
 
 

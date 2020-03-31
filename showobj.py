@@ -17,7 +17,7 @@ class ShowObj:
         self.del_set = set()
         self.viewport = (GLint * 4)()
         self.result = 0
-        self.scale = 2
+        self.scale = None
         self.rot_angle = np.array((38.0, -17.0), dtype=np.float32)
         self.rot_angle_old = self.rot_angle
         self.initial_look_at = np.array((0, 0, 3), dtype=np.float32)
@@ -158,7 +158,7 @@ class ShowObj:
                 imwrite('render.png', img)
 
     def window_size_fun(self, window, width, height):
-        glViewport(0, 0, width, height)
+        glViewport(0, 0, int(width * self.scale), int(height * self.scale))
 
     def window_load(self, window):
         pass
@@ -186,6 +186,10 @@ class ShowObj:
         glfw.set_window_size_callback(window, self.window_size_fun)
 
         glGetIntegerv(GL_VIEWPORT, self.viewport)
+        fw, fh = glfw.get_framebuffer_size(window)
+        ww, wh = glfw.get_window_size(window)
+        self.scale = fw / ww
+        assert fh / wh == self.scale
 
         self.window_load(window)
         # Loop until the user closes the window
@@ -210,7 +214,7 @@ class ShowObj:
     def do_part(self, partid):
         pass
 
-    def save_to_buffer(self):
+    def save_to_buffer(self) -> np.ndarray:
         x, y, width, height = self.viewport
         buf = (GLubyte * (width * height * 3))(0)
         glReadPixels(x, y, width, height, GL_RGB, GL_UNSIGNED_BYTE, buf)
