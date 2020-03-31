@@ -5,9 +5,8 @@ to load in after-merging PartNet part semantics that are used for Sec 5.1, 5.2 a
 
 """
 
-import os
 import sys
-from geometry_utils import *
+from tools.geometry_utils import *
 import numpy as np
 import json
 from progressbar import ProgressBar

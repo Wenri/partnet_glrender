@@ -13,7 +13,7 @@ from sklearn.cluster import k_means
 from sklearn.manifold import spectral_embedding
 from sklearn.metrics.pairwise import cosine_similarity
 
-from cfgreader import conf
+from tools.cfgreader import conf
 
 CLUSTER_DIM = 3
 

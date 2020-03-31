@@ -1,8 +1,8 @@
 import os
 
-import blender_convert
-from blender_convert import load_json, load_obj_files
-from cfgreader import conf
+from tools import blender_convert
+from tools.blender_convert import load_json, load_obj_files
+from tools.cfgreader import conf
 
 blender_convert.DATA_DIR = conf.partnet_url
 

@@ -9,11 +9,11 @@ from matplotlib import pyplot
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
 
-import blender_convert
-from blender_convert import download_id
-from cfgreader import conf
-from matlabengine import MatEng
-from pcmatch import PCMatch, pclsimilarity, arr2pt
+from tools import blender_convert
+from tools.blender_convert import download_id
+from tools.cfgreader import conf
+from tools.matlabengine import MatEng
+from ptcloud.pcmatch import PCMatch, pclsimilarity, arr2pt
 
 blender_convert.DATA_DIR = conf.partnet_url
 
@@ -138,7 +138,7 @@ def eval_id(im_id, draw_plot=True, log_file=sys.stdout):
 
 
 def main():
-    with open('pointcloud.log', 'w') as log_file:
+    with open('../pointcloud.log', 'w') as log_file:
         for im_id in conf.dblist:
             try:
                 results = eval_id(im_id, draw_plot=False, log_file=log_file)

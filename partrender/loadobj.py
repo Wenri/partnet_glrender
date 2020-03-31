@@ -2,8 +2,8 @@ import os
 
 from pywavefront import Wavefront
 
-from cfgreader import conf
-from showobj import ShowObj
+from tools.cfgreader import conf
+from partrender.showobj import ShowObj
 
 
 def main(idx):

@@ -10,9 +10,9 @@ from pywavefront import Wavefront
 from pywavefront.visualization import gl_light
 from sklearn.metrics.pairwise import cosine_similarity
 
-from cfgreader import conf
-from clusterpartnet import BkThread, CLUSTER_DIM
-from showobj import ShowObj
+from tools.cfgreader import conf
+from partrender.clusterpartnet import BkThread, CLUSTER_DIM
+from partrender.showobj import ShowObj
 
 
 def triangle_area(a, pnorm=None):
@@ -152,11 +152,6 @@ class ClsObj(ShowObj):
             material.ambient = [0.2, 0.2, 0.2, 1.0]
         self.bkt = BkThread(scene.mesh_list, self)
         return scene
-
-    def look_at_reset(self):
-        self.rot_angle = np.array((38.0, -17.0), dtype=np.float32)
-        self.initial_look_at = np.array((0, 0, 3), dtype=np.float32)
-        self.up_vector = np.array((0, 1, 0), dtype=np.float32)
 
     def look_at_cls(self, cls_name, cid=0):
         if cls_name not in self.cluster_norm:

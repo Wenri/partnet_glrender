@@ -18,8 +18,16 @@ class ShowObj:
         self.viewport = (GLint * 4)()
         self.result = 0
         self.scale = None
-        self.rot_angle = np.array((38.0, -17.0), dtype=np.float32)
+
+        self.rot_angle = None
+        self.initial_look_at = None
+        self.up_vector = None
+        self.look_at_reset()
+
         self.rot_angle_old = self.rot_angle
+
+    def look_at_reset(self):
+        self.rot_angle = np.array((38.0, -17.0), dtype=np.float32)
         self.initial_look_at = np.array((0, 0, 3), dtype=np.float32)
         self.up_vector = np.array((0, 1, 0), dtype=np.float32)
 

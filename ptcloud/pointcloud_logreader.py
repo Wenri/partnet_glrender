@@ -7,7 +7,7 @@ def pointcloud_log_gen():
     cur_im_id = None
     cur_rot_score = None
     cur_sim_score = None
-    with open('pointcloud.log', mode='r') as f:
+    with open('../pointcloud.log', mode='r') as f:
         for line in f:
             part = line.split(':')
             scores = part[1].split()
