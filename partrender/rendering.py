@@ -1,5 +1,5 @@
 import os
-from threading import Lock
+from threading import Lock, Condition
 from typing import Final
 
 import glfw
@@ -30,8 +30,9 @@ class RenderObj(ShowObj):
         self.cluster_color = not auto_generate
         self.render_lock = None
         self.render_cmd = None
+        self.render_req = 0
+        self.render_ack = None
         self.lock_list = None
-        self.render_name = None
         self.window = None
 
         super().__init__(self.load_image())
@@ -86,56 +87,77 @@ class RenderObj(ShowObj):
         glPopClientAttrib()
 
     def window_load(self, window):
+        super(RenderObj, self).window_load(window)
         self.window = window
         self.result = 0
+        self.render_cmd = Condition()
         self.render_lock = Lock()
-        self.render_cmd = Lock()
+        self.render_req = 0
+        self.render_ack = None
         self.look_at_reset()
         if not self.cluster_color:
-            with self.set_render_name('render'):
-                self.del_set = set()
-                self.sel_set = set()
+            self.render_ack = 'render'
+            self.del_set = set()
+            self.sel_set = set()
 
     def set_render_name(self, render_name):
-        self.render_name = render_name
-        return self
-
-    def __enter__(self):
-        self.render_cmd.acquire()
-        self.render_lock.acquire()
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.render_lock.release()
-        glfw.post_empty_event()
+        return RenderNotify(self, render_name)
 
     def window_closing(self, window):
+        super(RenderObj, self).window_closing(window)
+        with self.render_cmd:
+            self.render_cmd.notify_all()
         if self.fast_switching():
             self.scene = self.load_image()
             glfw.set_window_should_close(window, GL_FALSE)
             self.window_load(window)
 
     def fast_switching(self):
+        is_fast_switching = True
         if self.result == 1:
             self.imageid = min(self.imageid + 1, len(conf.dblist) - 1)
         elif self.result == 2:
             self.imageid = max(0, self.imageid - 1)
         else:
-            return False
-        self.result = 0
-        return True
+            is_fast_switching = False
+        return is_fast_switching
 
     def show_obj(self):
         super().show_obj()
 
     def draw_model(self):
+        with self.render_cmd:
+            if self.render_req > 0:
+                self.render_req -= 1
+                self.render_lock.acquire()
+                self.render_cmd.notify()
         with self.render_lock:
             super().draw_model()
-            if self.render_cmd.locked():
+            if self.render_ack:
                 img = self.save_to_buffer()
-                self.render_cmd.release()
                 im_id = conf.dblist[self.imageid]
-                im_name = '{}.png'.format(self.render_name)
+                im_name = '{}.png'.format(self.render_ack)
                 file_path = os.path.join(conf.render_dir, im_id)
                 if not os.path.exists(file_path):
                     os.mkdir(file_path)
                 imwrite(os.path.join(file_path, im_name), img)
+                self.render_ack = None
+
+
+class RenderNotify:
+    def __init__(self, target: RenderObj, render_name):
+        self.render_name = render_name
+        self.target = target
+
+    def __enter__(self):
+        self.target.render_cmd.acquire()
+        self.target.render_req += 1
+        glfw.post_empty_event()
+        self.target.render_cmd.wait()
+        if self.target.closing:
+            raise RuntimeError('window closing')
+        self.target.render_ack = self.render_name
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.target.render_lock.release()
+        self.target.render_cmd.release()

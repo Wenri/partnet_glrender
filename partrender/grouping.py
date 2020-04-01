@@ -101,28 +101,32 @@ class GroupObj(RenderObj):
 
         if self.cluster_color:
             glfw.post_empty_event()
-            return
+            return True
 
         if not cls_name:
-            self.result = 1
+            self.result = 1 if self.imageid < len(conf.dblist) - 1 else 0
             glfw.set_window_should_close(self.window, GL_TRUE)
             glfw.post_empty_event()
-            return
+            return False
 
         id_list, mtl_list = zip(*self.bkt.grp_dict[cls_name])
 
-        with self.set_render_name(cls_name.replace('/', '_')):
-            self.del_set = set(idx for idx in range(len(self.scene.mesh_list)) if idx not in set(id_list))
-            self.sel_set = set()
-            self.look_at_reset()
-            print(self.del_set)
+        try:
+            with self.set_render_name(cls_name.replace('/', '_')):
+                self.del_set = set(idx for idx in range(len(self.scene.mesh_list)) if idx not in set(id_list))
+                self.sel_set = set()
+                self.look_at_reset()
+                print(self.del_set)
 
-        for c in range(2 ** CLUSTER_DIM - 2):
-            with self.set_render_name(cls_name.replace('/', '_') + '_look_{}+'.format(self.CLS_COLOR[c])):
-                self.look_at_cls(cls_name, c)
+            for c in range(2 ** CLUSTER_DIM - 2):
+                with self.set_render_name(cls_name.replace('/', '_') + '_look_{}+'.format(self.CLS_COLOR[c])):
+                    self.look_at_cls(cls_name, c)
 
-            with self.set_render_name(cls_name.replace('/', '_') + '_look_{}-'.format(self.CLS_COLOR[c])):
-                self.initial_look_at = -self.initial_look_at
+                with self.set_render_name(cls_name.replace('/', '_') + '_look_{}-'.format(self.CLS_COLOR[c])):
+                    self.initial_look_at = -self.initial_look_at
+        except RuntimeError:
+            return False
+        return True
 
     def look_at_cls(self, cls_name, cid=0):
         if cls_name not in self.cluster_norm:
@@ -169,7 +173,7 @@ class GroupObj(RenderObj):
         self.bkt.start()
 
     def window_closing(self, window):
-        self.bkt.exit_wait()
+        self.bkt.async_exit()
         super(GroupObj, self).window_closing(window)
 
 

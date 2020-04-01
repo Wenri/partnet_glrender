@@ -11,8 +11,9 @@ from tools.cfgreader import conf
 
 
 class ShowObj:
-    def __init__(self, scene: Wavefront):
+    def __init__(self, scene: Wavefront, title='ShowObj'):
         self.scene = scene
+        self.title = title
         self.cur_pos_old = (0.0, 0.0)
         self.cur_rot_mode = False
         self.cur_sel_idx = (GLubyte * 1)(0xFF)
@@ -21,6 +22,7 @@ class ShowObj:
         self.del_set = set()
         self.viewport = (GLint * 4)()
         self.result = 0
+        self.closing = False
         self.scale = None
 
         self.rot_angle = None
@@ -173,10 +175,12 @@ class ShowObj:
         glViewport(0, 0, int(width * self.scale), int(height * self.scale))
 
     def window_load(self, window):
-        pass
+        glfw.set_window_title(window, self.title)
+        self.closing = False
 
     def window_closing(self, window):
-        pass
+        glfw.set_window_title(window, 'Closing... ' + self.title)
+        self.closing = True
 
     def show_obj(self):
         # Initialize the library
@@ -184,7 +188,7 @@ class ShowObj:
             raise Exception('An error occurred')
 
         # Create a windowed mode window and its OpenGL context
-        window = glfw.create_window(1280, 800, "Hello World", None, None)
+        window = glfw.create_window(1280, 800, self.title, None, None)
         if not window:
             raise Exception('An error occurred')
 

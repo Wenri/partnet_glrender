@@ -168,7 +168,6 @@ class BkThread(Thread):
     def run(self):
         if self.can_exit:
             return
-
         for cls_name, mtl_id_list in self.grp_dict.items():
             _, labels = self.gen_cluster_result(cls_name, mtl_id_list)
             if self.can_exit:
@@ -177,14 +176,13 @@ class BkThread(Thread):
                 n_vertex = int(len(mtl.vertices) / 6)
                 self.change_mtl(idx, mtl, labels[:n_vertex])
                 labels = labels[n_vertex:]
-            if callable(self.callback):
-                self.callback(cls_name)
-
+            if self.can_exit or (callable(self.callback) and not self.callback(cls_name)):
+                return
         self.callback(None)
 
-    def exit_wait(self):
+    def async_exit(self):
         self.can_exit = True
-        self.join()
+        return self
 
 
 def main(nskip):
