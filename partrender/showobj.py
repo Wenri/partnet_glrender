@@ -11,7 +11,7 @@ from tools.cfgreader import conf
 
 
 class ShowObj:
-    post_event = glfw.post_empty_event
+    post_event = staticmethod(glfw.post_empty_event)
 
     def __init__(self, scene: Wavefront, title='ShowObj'):
         self._rot_angle_old = None

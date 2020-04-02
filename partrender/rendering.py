@@ -1,6 +1,6 @@
 import os
 from contextlib import contextmanager
-from threading import Lock, Condition
+from threading import Lock, Condition, Event
 from typing import Final
 
 import glfw
@@ -32,6 +32,7 @@ class RenderObj(ShowObj):
         self.render_lock = None
         self.render_cmd = None
         self.render_req = 0
+        self.render_name = None
         self.render_ack = None
         self.render_dir = render_dir
         self.lock_list = None
@@ -95,31 +96,35 @@ class RenderObj(ShowObj):
         self.render_cmd = Condition()
         self.render_lock = Lock()
         self.render_req = 0
-        self.render_ack = None
+        self.render_ack = Event()
+        self.render_name = None
         self.look_at_reset()
         if not self.view_mode:
-            self.render_ack = 'render'
+            self.render_name = 'render'
             self.del_set = set()
             self.sel_set = set()
 
     @contextmanager
-    def set_render_name(self, render_name):
+    def set_render_name(self, render_name, wait=False):
         with self.render_cmd:
             if self.closing:
                 raise RuntimeError('window closing')
             self.render_req += 1
             self.post_event()
             self.render_cmd.wait()
-            self.render_ack = render_name
             try:
                 yield self
+                self.render_name = render_name
             finally:
                 self.render_lock.release()
+        if wait:
+            self.render_ack.wait()
 
     def set_fast_switching(self):
         self.result = 1 if self.imageid < len(conf.dblist) - 1 else 0
         glfw.set_window_should_close(self.window, GL_TRUE)
         self.post_event()
+        return self.result
 
     def window_closing(self, window):
         super(RenderObj, self).window_closing(window)
@@ -150,15 +155,17 @@ class RenderObj(ShowObj):
             if self.render_req > 0:
                 self.render_req -= 1
                 self.render_lock.acquire()
+                self.render_ack.clear()
                 self.render_cmd.notify()
         with self.render_lock:
             super().draw_model()
-            if self.render_ack:
+            if self.render_name:
                 img = self.save_to_buffer()
                 im_id = conf.dblist[self.imageid]
-                im_name = '{}.png'.format(self.render_ack)
+                im_name = '{}.png'.format(self.render_name)
                 file_path = os.path.join(self.render_dir, im_id)
                 if not os.path.exists(file_path):
                     os.mkdir(file_path)
                 imwrite(os.path.join(file_path, im_name), img)
-                self.render_ack = None
+                self.render_name = None
+                self.render_ack.set()

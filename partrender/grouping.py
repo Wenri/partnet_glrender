@@ -1,7 +1,6 @@
 import os
 from typing import Final
 
-import glfw
 import numpy as np
 from numpy.linalg import norm
 from pyglet.gl import *
