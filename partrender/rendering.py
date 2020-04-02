@@ -26,13 +26,14 @@ class RenderObj(ShowObj):
         'T2F_C4F_N3F_V3F': GL_T2F_C4F_N3F_V3F,
     }
 
-    def __init__(self, start_id, auto_generate=False):
+    def __init__(self, start_id, view_mode=True, render_dir=conf.render_dir):
         self.imageid = start_id
-        self.cluster_color = not auto_generate
+        self.view_mode = view_mode
         self.render_lock = None
         self.render_cmd = None
         self.render_req = 0
         self.render_ack = None
+        self.render_dir = render_dir
         self.lock_list = None
         self.window = None
 
@@ -78,7 +79,7 @@ class RenderObj(ShowObj):
             else:
                 glDisable(GL_LIGHTING)
 
-            if vertex_format == GL_C4F_N3F_V3F and self.cluster_color:
+            if vertex_format == GL_C4F_N3F_V3F and self.view_mode:
                 glEnable(GL_COLOR_MATERIAL)
 
             glInterleavedArrays(vertex_format, 0, material.gl_floats)
@@ -96,7 +97,7 @@ class RenderObj(ShowObj):
         self.render_req = 0
         self.render_ack = None
         self.look_at_reset()
-        if not self.cluster_color:
+        if not self.view_mode:
             self.render_ack = 'render'
             self.del_set = set()
             self.sel_set = set()
@@ -107,13 +108,18 @@ class RenderObj(ShowObj):
             if self.closing:
                 raise RuntimeError('window closing')
             self.render_req += 1
-            glfw.post_empty_event()
+            self.post_event()
             self.render_cmd.wait()
             self.render_ack = render_name
             try:
                 yield self
             finally:
                 self.render_lock.release()
+
+    def set_fast_switching(self):
+        self.result = 1 if self.imageid < len(conf.dblist) - 1 else 0
+        glfw.set_window_should_close(self.window, GL_TRUE)
+        self.post_event()
 
     def window_closing(self, window):
         super(RenderObj, self).window_closing(window)
@@ -151,7 +157,7 @@ class RenderObj(ShowObj):
                 img = self.save_to_buffer()
                 im_id = conf.dblist[self.imageid]
                 im_name = '{}.png'.format(self.render_ack)
-                file_path = os.path.join(conf.render_dir, im_id)
+                file_path = os.path.join(self.render_dir, im_id)
                 if not os.path.exists(file_path):
                     os.mkdir(file_path)
                 imwrite(os.path.join(file_path, im_name), img)

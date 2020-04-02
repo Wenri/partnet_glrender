@@ -86,7 +86,7 @@ class GroupObj(RenderObj):
         self.cluster_cls = None
         self.cluster_id = None
         self.cluster_norm = dict()
-        super(GroupObj, self).__init__(start_id, auto_generate)
+        super(GroupObj, self).__init__(start_id, not auto_generate)
 
     def load_image(self):
         scene = super(GroupObj, self).load_image()
@@ -99,14 +99,12 @@ class GroupObj(RenderObj):
             label_list = [self.bkt.result_list[idx] for idx in id_list]
             self.cluster_norm[cls_name] = do_norm_calc(mtl_list, label_list)
 
-        if self.cluster_color:
-            glfw.post_empty_event()
+        if self.view_mode:
+            self.post_event()
             return True
 
         if not cls_name:
-            self.result = 1 if self.imageid < len(conf.dblist) - 1 else 0
-            glfw.set_window_should_close(self.window, GL_TRUE)
-            glfw.post_empty_event()
+            self.set_fast_switching()
             return False
 
         id_list, mtl_list = zip(*self.bkt.grp_dict[cls_name])

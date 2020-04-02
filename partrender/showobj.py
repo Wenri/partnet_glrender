@@ -11,13 +11,17 @@ from tools.cfgreader import conf
 
 
 class ShowObj:
+    post_event = glfw.post_empty_event
+
     def __init__(self, scene: Wavefront, title='ShowObj'):
+        self._rot_angle_old = None
+        self._cur_pos_old = (0.0, 0.0)
+        self._cur_sel_idx = (GLubyte * 1)()
+        self._selected_idx = None
+
         self.scene = scene
         self.title = title
-        self.cur_pos_old = (0.0, 0.0)
         self.cur_rot_mode = False
-        self.cur_sel_idx = (GLubyte * 1)(0xFF)
-        self.invalid_cur_idx = 0xFF
         self.sel_set = set()
         self.del_set = set()
         self.viewport = (GLint * 4)()
@@ -29,8 +33,6 @@ class ShowObj:
         self.initial_look_at = None
         self.up_vector = None
         self.look_at_reset()
-
-        self.rot_angle_old = self.rot_angle
 
     def look_at_reset(self):
         self.rot_angle = np.array((38.0, -17.0), dtype=np.float32)
@@ -61,15 +63,6 @@ class ShowObj:
         x, y, z = np.cross(pv, self.up_vector)
         glRotatef(self.rot_angle[1], x, y, z)
 
-    def material(self):
-        mat_specular = [1.0, 1.0, 1.0, 1.0]
-        mat_shininess = [50.0]
-        glClearColor(0.0, 0.0, 0.0, 0.0)
-        glShadeModel(GL_SMOOTH)
-
-        glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular)
-        glMaterialfv(GL_FRONT, GL_SHININESS, mat_shininess)
-
     def lighting(self):
 
         light_ambient = (GLfloat * 4)(0.2, 0.2, 0.2, 1.0)
@@ -87,14 +80,13 @@ class ShowObj:
 
     def draw_model(self):
         self.lighting()
-        # self.material()
 
         glEnable(GL_DEPTH_TEST)
         glDepthFunc(GL_LESS)
 
         glEnable(GL_STENCIL_TEST)
 
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT)
         # glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
 
         cur_idx = self.get_cur_sel_idx()
@@ -106,7 +98,7 @@ class ShowObj:
             glStencilMask(0xFF)  # Write to stencil buffer
             for material in mesh.materials:
                 material.ambient = [0.6, 0.6, 0.6, 1.0]
-                if idx == cur_idx and cur_idx != self.invalid_cur_idx:
+                if idx == cur_idx and cur_idx != self._selected_idx:
                     material.ambient = [0.0, 1.0, 1.0, 1.0]
                 elif idx in self.sel_set:
                     material.ambient = [0.0, 0.0, 1.0, 1.0]
@@ -116,19 +108,17 @@ class ShowObj:
         draw_material(material, face, lighting_enabled, textures_enabled)
 
     def get_cur_sel_idx(self):
-        cur_idx, = self.cur_sel_idx
-        if cur_idx == 0 or cur_idx == 0xFF:
-            return 0xFF
-        return cur_idx - 1
+        [cur_idx] = self._cur_sel_idx
+        return cur_idx - 1 if cur_idx else None
 
     def mouse_button_fun(self, window, button, action, mods):
         if button == 1:
-            self.cur_pos_old = glfw.get_cursor_pos(window)
+            self._cur_pos_old = glfw.get_cursor_pos(window)
             self.cur_rot_mode = (action == 1)
-            self.rot_angle_old = self.rot_angle
+            self._rot_angle_old = self.rot_angle
         elif button == 0 and action == 1:
             cur_idx = self.get_cur_sel_idx()
-            self.invalid_cur_idx = cur_idx
+            self._selected_idx = cur_idx
             if cur_idx in self.sel_set:
                 self.sel_set.remove(cur_idx)
             else:
@@ -136,16 +126,16 @@ class ShowObj:
 
     def cursor_pos_fun(self, window, xpos, ypos):
         if self.cur_rot_mode:
-            offset = np.array((xpos, ypos)) - self.cur_pos_old
-            self.rot_angle = self.rot_angle_old - offset
+            offset = np.array((xpos, ypos)) - self._cur_pos_old
+            self.rot_angle = self._rot_angle_old - offset
         else:
             x, y, width, height = self.viewport
             glReadPixels(int(xpos * self.scale),
                          int(height - ypos * self.scale), 1, 1,
-                         GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, self.cur_sel_idx)
+                         GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, self._cur_sel_idx)
             cur_idx = self.get_cur_sel_idx()
-            if self.invalid_cur_idx != cur_idx:
-                self.invalid_cur_idx = 0xFF
+            if self._selected_idx != cur_idx:
+                self._selected_idx = None
 
     def scroll_fun(self, window, xoffset, yoffset):
         self.rot_angle += np.array((xoffset, yoffset))
@@ -164,7 +154,7 @@ class ShowObj:
                 glfw.set_window_should_close(window, GL_TRUE)
             elif key == glfw.KEY_SPACE:
                 cur_idx = self.get_cur_sel_idx()
-                if cur_idx == 0xff:
+                if not cur_idx:
                     return
                 self.do_part(cur_idx)
             elif key == glfw.KEY_S:
@@ -185,12 +175,12 @@ class ShowObj:
     def show_obj(self):
         # Initialize the library
         if not glfw.init():
-            raise Exception('An error occurred')
+            raise RuntimeError('An error occurred')
 
         # Create a windowed mode window and its OpenGL context
         window = glfw.create_window(1280, 800, self.title, None, None)
         if not window:
-            raise Exception('An error occurred')
+            raise RuntimeError('An error occurred')
 
         # Make the window's context current
         glfw.make_context_current(window)
