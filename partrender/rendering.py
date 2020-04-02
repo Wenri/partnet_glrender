@@ -1,4 +1,5 @@
 import os
+from contextlib import contextmanager
 from threading import Lock, Condition
 from typing import Final
 
@@ -100,17 +101,30 @@ class RenderObj(ShowObj):
             self.del_set = set()
             self.sel_set = set()
 
+    @contextmanager
     def set_render_name(self, render_name):
-        return RenderNotify(self, render_name)
+        with self.render_cmd:
+            if self.closing:
+                raise RuntimeError('window closing')
+            self.render_req += 1
+            glfw.post_empty_event()
+            self.render_cmd.wait()
+            self.render_ack = render_name
+            try:
+                yield self
+            finally:
+                self.render_lock.release()
 
     def window_closing(self, window):
         super(RenderObj, self).window_closing(window)
         with self.render_cmd:
-            self.render_cmd.notify_all()
-        if self.fast_switching():
-            self.scene = self.load_image()
-            glfw.set_window_should_close(window, GL_FALSE)
-            self.window_load(window)
+            if self.render_req > 0:
+                self.render_cmd.notify_all()
+        with self.render_lock:
+            if self.fast_switching():
+                self.scene = self.load_image()
+                glfw.set_window_should_close(window, GL_FALSE)
+                self.window_load(window)
 
     def fast_switching(self):
         is_fast_switching = True
@@ -142,22 +156,3 @@ class RenderObj(ShowObj):
                     os.mkdir(file_path)
                 imwrite(os.path.join(file_path, im_name), img)
                 self.render_ack = None
-
-
-class RenderNotify:
-    def __init__(self, target: RenderObj, render_name):
-        self.render_name = render_name
-        self.target = target
-
-    def __enter__(self):
-        self.target.render_cmd.acquire()
-        self.target.render_req += 1
-        glfw.post_empty_event()
-        self.target.render_cmd.wait()
-        if self.target.closing:
-            raise RuntimeError('window closing')
-        self.target.render_ack = self.render_name
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.target.render_lock.release()
-        self.target.render_cmd.release()

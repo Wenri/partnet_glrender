@@ -110,7 +110,7 @@ class BkThread(Thread):
         self.grp_dict = defaultdict(list)
         self.mesh_list = mesh_list
         self.lock_list = lock_list
-        self.result_list = [None for i in range(len(mesh_list))]
+        self.result_list = [None] * len(mesh_list)
         self.can_exit = False
         self.callback = callback
         self.im_id = None
