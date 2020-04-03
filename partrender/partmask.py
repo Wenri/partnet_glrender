@@ -14,12 +14,13 @@ class MaskObj(RenderObj):
         Thread(target=self, daemon=True).start()
 
     def __call__(self, *args, **kwargs):
-        try:
-            for i in range(len(self.scene.mesh_list)):
-                with self.set_render_name(str(i)):
-                    self.sel_set = {i}
-        except RuntimeError:
-            return
+        # try:
+        #     for i in range(len(self.scene.mesh_list)):
+        #         with self.set_render_name(str(i)):
+        #             self.sel_set = {i}
+        # except RuntimeError:
+        #     return
+        self.render_ack.wait()
         self.set_fast_switching()
 
 

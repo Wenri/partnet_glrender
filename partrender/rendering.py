@@ -9,13 +9,14 @@ from imageio import imwrite
 from pyglet.gl import *
 from pywavefront import Wavefront
 from pywavefront.visualization import gl_light
+from scipy.io import savemat
 
 from partrender.showobj import ShowObj
 from tools.cfgreader import conf
 
 
 class RenderObj(ShowObj):
-    VERTEX_FORMATS: Final = {
+    _VERTEX_FORMATS: Final = {
         'V3F': GL_V3F,
         'C3F_V3F': GL_C3F_V3F,
         'N3F_V3F': GL_N3F_V3F,
@@ -65,7 +66,7 @@ class RenderObj(ShowObj):
                 material.gl_floats = np.asarray(material.vertices, dtype=np.float32).ctypes
                 material.triangle_count = len(material.vertices) / material.vertex_size
 
-            vertex_format = self.VERTEX_FORMATS.get(material.vertex_format)
+            vertex_format = self._VERTEX_FORMATS.get(material.vertex_format)
             if not vertex_format:
                 raise ValueError("Vertex format {} not supported by pyglet".format(material.vertex_format))
 
@@ -160,12 +161,16 @@ class RenderObj(ShowObj):
         with self.render_lock:
             super().draw_model()
             if self.render_name:
-                img = self.save_to_buffer()
-                im_id = conf.dblist[self.imageid]
-                im_name = '{}.png'.format(self.render_name)
-                file_path = os.path.join(self.render_dir, im_id)
-                if not os.path.exists(file_path):
-                    os.mkdir(file_path)
-                imwrite(os.path.join(file_path, im_name), img)
-                self.render_name = None
+                self.save_buffer(self.render_name)
                 self.render_ack.set()
+                self.render_name = None
+
+    def save_buffer(self, im_name):
+        img, depth, stencil = map(self.get_buffer, ('GL_RGB', 'GL_DEPTH_COMPONENT', 'GL_STENCIL_INDEX'))
+        im_id = conf.dblist[self.imageid]
+        file_path = os.path.join(self.render_dir, im_id)
+        if not os.path.exists(file_path):
+            os.mkdir(file_path)
+        imwrite(os.path.join(file_path, f'{im_name}-RGB.png'), img)
+        savemat(os.path.join(file_path, f'{im_name}-DEPTH.mat'), {'depth': depth}, do_compression=True)
+        imwrite(os.path.join(file_path, f'{im_name}-STENCIL.png'), stencil)

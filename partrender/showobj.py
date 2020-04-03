@@ -1,4 +1,5 @@
 import os
+from typing import Final
 
 import glfw
 import numpy as np
@@ -12,6 +13,12 @@ from tools.cfgreader import conf
 
 class ShowObj:
     post_event = staticmethod(glfw.post_empty_event)
+
+    _BUFFER_TYPE: Final = {
+        'GL_RGB': (GL_RGB, GLubyte, GL_UNSIGNED_BYTE, 3),
+        'GL_DEPTH_COMPONENT': (GL_DEPTH_COMPONENT, GLfloat, GL_FLOAT, 1),
+        'GL_STENCIL_INDEX': (GL_STENCIL_INDEX, GLubyte, GL_UNSIGNED_BYTE, 1)
+    }
 
     def __init__(self, scene: Wavefront, title='ShowObj'):
         self._rot_angle_old = None
@@ -158,7 +165,7 @@ class ShowObj:
                     return
                 self.do_part(cur_idx)
             elif key == glfw.KEY_S:
-                img = self.save_to_buffer()
+                img = self.get_buffer()
                 imwrite('render.png', img)
 
     def window_size_fun(self, window, width, height):
@@ -220,11 +227,13 @@ class ShowObj:
     def do_part(self, partid):
         pass
 
-    def save_to_buffer(self) -> np.ndarray:
+    def get_buffer(self, buf_type_str='GL_RGB'):
         x, y, width, height = self.viewport
-        buf = (GLubyte * (width * height * 3))(0)
-        glReadPixels(x, y, width, height, GL_RGB, GL_UNSIGNED_BYTE, buf)
-        buf = np.ctypeslib.as_array(buf).reshape((height, width, 3))
+        buf_type, buf_ctypes, buf_data_type, ch = self._BUFFER_TYPE.get(buf_type_str)
+        buf_shape = (height, width) if ch == 1 else (height, width, ch)
+        buf = (buf_ctypes * (width * height * ch))()
+        glReadPixels(x, y, width, height, buf_type, buf_data_type, buf)
+        buf = np.ctypeslib.as_array(buf).reshape(buf_shape)
         return np.flip(buf, axis=0)
 
 
