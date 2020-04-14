@@ -1,3 +1,4 @@
+import os
 from threading import Thread
 
 from partrender.rendering import RenderObj
@@ -14,14 +15,20 @@ class MaskObj(RenderObj):
         Thread(target=self, daemon=True).start()
 
     def __call__(self, *args, **kwargs):
-        # try:
-        #     for i in range(len(self.scene.mesh_list)):
-        #         with self.set_render_name(str(i)):
-        #             self.sel_set = {i}
-        # except RuntimeError:
-        #     return
-        self.render_ack.wait()
-        self.set_fast_switching()
+        im_id = conf.dblist[self.imageid]
+        try:
+            with open(os.path.join(conf.partmask_dir, im_id, 'render-CLSNAME.txt'),
+                      mode='w') as f:
+                for idx, mesh in enumerate(self.scene.mesh_list):
+                    for material in mesh.materials:
+                        conf_im_id, cls_name, file_name = conf.get_cls_from_mtlname(material.name)
+                        assert conf_im_id == im_id
+                        group_name = conf.find_group_name(cls_name)
+                        print(conf_im_id, idx, group_name, cls_name, file_name, file=f)
+            self.render_ack.wait()
+            self.set_fast_switching()
+        except RuntimeError:
+            return
 
 
 def main(idx, autogen=True):
