@@ -49,7 +49,7 @@ class ShowObj:
     def perspective(self):
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
-        glGetIntegerv(GL_VIEWPORT, self.viewport)tmux
+        glGetIntegerv(GL_VIEWPORT, self.viewport)
         x, y, width, height = self.viewport
         gluPerspective(45.0, width / height, 1, 10.0)
 
