@@ -23,6 +23,9 @@ class MaskObj(RenderObj):
                     for material in mesh.materials:
                         conf_im_id, cls_name, file_name = conf.get_cls_from_mtlname(material.name)
                         assert conf_im_id == im_id
+                        conf_mesh_name, _ = os.path.splitext(file_name)
+                        mesh_name, _ = os.path.splitext(mesh.name)
+                        assert conf_mesh_name == mesh_name
                         group_name = conf.find_group_name(cls_name)
                         print(conf_im_id, idx, group_name, cls_name, file_name, file=f)
             self.render_ack.wait()
