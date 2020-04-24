@@ -48,33 +48,34 @@ class MaskObj(RenderObj):
 
     def window_load(self, window):
         super(MaskObj, self).window_load(window)
-        #self.random_seed(self.imageid)
         Thread(target=self, daemon=True).start()
 
     def random_seed(self, s, seed=0xdeadbeef):
         # seeding numpy random state
         halg = hashlib.md5()
-        halg.update('random_seed_{}'.format(s).encode())
+        halg.update('random_state_{}'.format(s).encode())
         s = halg.digest()
         s = reduce(operator.xor, (int.from_bytes(s[i * 4:i * 4 + 4], byteorder='little') for i in range(len(s) // 4)))
-        np.random.seed(s ^ seed)
+        s ^= seed
+        rs = np.random.RandomState(seed=s)
+        print("Random Seed {}".format(s))
 
         # random view angle
-        rx, ry = np.random.random_sample(size=2)
+        rx, ry = rs.random_sample(size=2)
         self.rot_angle = np.array((80 * 2 * (rx - 0.5), -45.0 * ry), dtype=np.float32)
 
         # random light color
         def rand_color(power=1.0, color_u=0.5, color_v=0.5):
             base_color = yuv2rgb(np.array([power, color_u, color_v]))
             base_color = rgb2yuv(np.clip(base_color, 0, 1))
-            color = np.random.standard_normal(size=3)
+            color = rs.standard_normal(size=3)
             color *= np.array([0.01, 0.05, 0.05])
             color += base_color
             r, g, b = np.clip(yuv2rgb(color), 0, 1, dtype=np.float32)
             return r, g, b, 1.0
 
         def rand_pos(*pos):
-            pos_sample = np.random.random_sample(size=3)
+            pos_sample = rs.random_sample(size=3)
             x, y, z = pos_sample + np.array(pos)
             return x, y, z, 0.0
 
@@ -87,25 +88,26 @@ class MaskObj(RenderObj):
                                   position=rand_pos(i - (self.n_lights - 1) / 2, 4.0, 3.0))
 
         # random vertex color
-        u, v = 0.8 * np.random.random_sample(size=2) + 0.1
+        u, v = 0.8 * rs.random_sample(size=2) + 0.1
         diffuse = yuv2rgb(np.array([0.5, u, v]))
         diffuse = rgb2yuv(np.clip(diffuse, 0, 1))
-        for idx, mesh in enumerate(self.scene.mesh_list):
-            for material in mesh.materials:
-                self.change_mtl(idx, material, diffuse)
 
-    def change_mtl(self, idx, material: Material, diffuse):
-        a = np.array(material.vertices, dtype=np.float32).reshape([-1, 6])
-        n_vtx, _ = a.shape
-        with self.lock_list[idx]:
-            color = np.random.standard_normal(size=(n_vtx, 3))
-            alpha = np.ones(shape=(n_vtx, 1), dtype=np.float32)
-            color *= np.array([0.01, 0.05, 0.05])
-            color += diffuse
-            color = np.clip(yuv2rgb(color), 0, 1, dtype=np.float32)
-            material.gl_floats = np.concatenate((color, alpha, a), axis=1).ctypes
-            material.triangle_count = n_vtx
-            material.vertex_format = 'C4F_N3F_V3F'
+        def change_mtl(idx, material: Material):
+            a = np.array(material.vertices, dtype=np.float32).reshape([-1, 6])
+            n_vtx, _ = a.shape
+            with self.lock_list[idx]:
+                color = rs.standard_normal(size=(n_vtx, 3))
+                alpha = np.ones(shape=(n_vtx, 1), dtype=np.float32)
+                color *= np.array([0.01, 0.05, 0.05])
+                color += diffuse
+                color = np.clip(yuv2rgb(color), 0, 1, dtype=np.float32)
+                material.gl_floats = np.concatenate((color, alpha, a), axis=1).ctypes
+                material.triangle_count = n_vtx
+                material.vertex_format = 'C4F_N3F_V3F'
+
+        for i, mesh in enumerate(self.scene.mesh_list):
+            for m in mesh.materials:
+                change_mtl(i, m)
 
     def __call__(self, *args, **kwargs):
         try:
