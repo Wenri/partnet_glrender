@@ -1,4 +1,7 @@
+import hashlib
+import operator
 import os
+from functools import reduce
 from threading import Thread
 
 import numpy as np
@@ -40,19 +43,51 @@ def yuv2rgb(yuv):
 class MaskObj(RenderObj):
     def __init__(self, start_id, auto_generate=False):
         super(MaskObj, self).__init__(start_id, not auto_generate, conf.partmask_dir)
+        self.n_lights = 8
+        self.n_samples = 10
 
     def window_load(self, window):
         super(MaskObj, self).window_load(window)
-        self.random_seed(self.imageid+1)
+        #self.random_seed(self.imageid)
         Thread(target=self, daemon=True).start()
 
-    def random_seed(self, seed):
-        np.random.seed(seed)
+    def random_seed(self, s, seed=0xdeadbeef):
+        # seeding numpy random state
+        halg = hashlib.md5()
+        halg.update('random_seed_{}'.format(s).encode())
+        s = halg.digest()
+        s = reduce(operator.xor, (int.from_bytes(s[i * 4:i * 4 + 4], byteorder='little') for i in range(len(s) // 4)))
+        np.random.seed(s ^ seed)
 
+        # random view angle
         rx, ry = np.random.random_sample(size=2)
-        self.rot_angle = np.array((60*2*(rx-0.5), -30.0*ry), dtype=np.float32)
+        self.rot_angle = np.array((80 * 2 * (rx - 0.5), -45.0 * ry), dtype=np.float32)
 
-        u, v = np.random.random_sample(size=2)
+        # random light color
+        def rand_color(power=1.0, color_u=0.5, color_v=0.5):
+            base_color = yuv2rgb(np.array([power, color_u, color_v]))
+            base_color = rgb2yuv(np.clip(base_color, 0, 1))
+            color = np.random.standard_normal(size=3)
+            color *= np.array([0.01, 0.05, 0.05])
+            color += base_color
+            r, g, b = np.clip(yuv2rgb(color), 0, 1, dtype=np.float32)
+            return r, g, b, 1.0
+
+        def rand_pos(*pos):
+            pos_sample = np.random.random_sample(size=3)
+            x, y, z = pos_sample + np.array(pos)
+            return x, y, z, 0.0
+
+        # random light source
+        self.clear_light_source()
+        for i in range(self.n_lights):
+            self.add_light_source(ambient=rand_color(0.2 / self.n_lights),
+                                  diffuse=rand_color(1.0 / self.n_lights),
+                                  specular=rand_color(0.8 / self.n_lights),
+                                  position=rand_pos(i - (self.n_lights - 1) / 2, 4.0, 3.0))
+
+        # random vertex color
+        u, v = 0.8 * np.random.random_sample(size=2) + 0.1
         diffuse = yuv2rgb(np.array([0.5, u, v]))
         diffuse = rgb2yuv(np.clip(diffuse, 0, 1))
         for idx, mesh in enumerate(self.scene.mesh_list):
@@ -89,10 +124,9 @@ class MaskObj(RenderObj):
                         assert conf_mesh_name == mesh_name
                         print(conf_im_id, idx, cls_name, file_name, file=f)
 
-            for i in range(10):
+            for i in range(self.n_samples):
                 with self.set_render_name('seed_{}'.format(i), wait=True):
-                    v = np.random.randint(0xffffffff)
-                    self.random_seed(v)
+                    self.random_seed('{}-{}'.format(self.imageid, i))
             self.set_fast_switching()
         except RuntimeError:
             return

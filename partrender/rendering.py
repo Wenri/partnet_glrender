@@ -81,7 +81,7 @@ class RenderObj(ShowObj):
             else:
                 glDisable(GL_LIGHTING)
 
-            if vertex_format == GL_C4F_N3F_V3F and self.view_mode:
+            if vertex_format == GL_C4F_N3F_V3F:
                 glEnable(GL_COLOR_MATERIAL)
                 glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
 
@@ -100,7 +100,6 @@ class RenderObj(ShowObj):
         self.render_req = 0
         self.render_ack = Event()
         self.render_name = None
-        self.look_at_reset()
         if not self.view_mode:
             self.render_name = 'render'
             self.del_set = set()
@@ -135,8 +134,9 @@ class RenderObj(ShowObj):
                 self.render_cmd.notify_all()
         with self.render_lock:
             if self.fast_switching():
-                self.scene = self.load_image()
                 glfw.set_window_should_close(window, GL_FALSE)
+                glfw.poll_events()
+                self.scene = self.load_image()
                 self.window_load(window)
 
     def fast_switching(self):
@@ -152,22 +152,21 @@ class RenderObj(ShowObj):
             is_fast_switching = False
         return is_fast_switching
 
-    def show_obj(self):
-        super().show_obj()
-
-    def draw_model(self):
-        with self.render_cmd:
-            if self.render_req > 0:
-                self.render_req -= 1
-                self.render_lock.acquire()
-                self.render_ack.clear()
-                self.render_cmd.notify()
-        with self.render_lock:
-            super().draw_model()
-            if self.render_name:
-                self.save_buffer(self.render_name)
-                self.render_ack.set()
-                self.render_name = None
+    @contextmanager
+    def render_procedure(self):
+        with super(RenderObj, self).render_procedure():
+            with self.render_cmd:
+                if self.render_req > 0:
+                    self.render_req -= 1
+                    self.render_lock.acquire()
+                    self.render_ack.clear()
+                    self.render_cmd.notify()
+            with self.render_lock:
+                yield
+                if self.render_name:
+                    self.save_buffer(self.render_name)
+                    self.render_ack.set()
+                    self.render_name = None
 
     def save_buffer(self, im_name):
         img, depth, stencil = map(self.get_buffer, ('GL_RGB', 'GL_DEPTH_COMPONENT', 'GL_STENCIL_INDEX'))

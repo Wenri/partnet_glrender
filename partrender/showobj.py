@@ -1,4 +1,5 @@
 import os
+from contextlib import contextmanager
 from typing import Final
 
 import glfw
@@ -35,16 +36,35 @@ class ShowObj:
         self.result = 0
         self.closing = False
         self.scale = None
+        self.max_lights = 0
 
         self.rot_angle = None
         self.initial_look_at = None
         self.up_vector = None
-        self.look_at_reset()
+        self.light_source = []
 
-    def look_at_reset(self):
+    @contextmanager
+    def render_procedure(self):
+        yield
+
+    def default_param(self):
         self.rot_angle = np.array((38.0, -17.0), dtype=np.float32)
         self.initial_look_at = np.array((0, 0, 3), dtype=np.float32)
         self.up_vector = np.array((0, 1, 0), dtype=np.float32)
+        self.clear_light_source()
+        self.add_light_source()
+
+    def add_light_source(self, *, ambient=(0.2, 0.2, 0.2, 1.0), diffuse=(1.0, 1.0, 1.0, 1.0),
+                         specular=(1.0, 1.0, 1.0, 1.0), position=(0.0, 4.0, 3.0, 0.0)):
+        self.light_source.append({
+            GL_AMBIENT: (GLfloat * 4)(*ambient),
+            GL_DIFFUSE: (GLfloat * 4)(*diffuse),
+            GL_SPECULAR: (GLfloat * 4)(*specular),
+            GL_POSITION: (GLfloat * 4)(*position)
+        })
+
+    def clear_light_source(self):
+        self.light_source.clear()
 
     def perspective(self):
         glMatrixMode(GL_PROJECTION)
@@ -71,23 +91,18 @@ class ShowObj:
         glRotatef(self.rot_angle[1], x, y, z)
 
     def lighting(self):
-
-        light_ambient = (GLfloat * 4)(0.2, 0.2, 0.2, 1.0)
-        light_diffuse = (GLfloat * 4)(1.0, 1.0, 1.0, 1.0)
-        light_specular = (GLfloat * 4)(1.0, 1.0, 1.0, 1.0)
-        light_position = (GLfloat * 4)(0.0, 4.0, 3.0, 0.0)
-
-        glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient)
-        glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse)
-        glLightfv(GL_LIGHT0, GL_SPECULAR, light_specular)
-        glLightfv(GL_LIGHT0, GL_POSITION, light_position)
-
         glEnable(GL_LIGHTING)
-        glEnable(GL_LIGHT0)
+
+        for i in range(self.max_lights):
+            lid = GL_LIGHT0 + i
+            if i < len(self.light_source):
+                for k, v in self.light_source[i].items():
+                    glLightfv(lid, k, v)
+                glEnable(lid)
+            else:
+                glDisable(lid)
 
     def draw_model(self):
-        self.lighting()
-
         glEnable(GL_DEPTH_TEST)
         glDepthFunc(GL_LESS)
 
@@ -173,6 +188,7 @@ class ShowObj:
 
     def window_load(self, window):
         glfw.set_window_title(window, self.title)
+        self.default_param()
         self.closing = False
 
     def window_closing(self, window):
@@ -198,7 +214,11 @@ class ShowObj:
         glfw.set_key_callback(window, self.key_fun)
         glfw.set_window_size_callback(window, self.window_size_fun)
 
+        max_lights = (GLint * 1)()
+        glGetIntegerv(GL_MAX_LIGHTS, max_lights)
+        [self.max_lights] = max_lights
         glGetIntegerv(GL_VIEWPORT, self.viewport)
+
         fw, fh = glfw.get_framebuffer_size(window)
         ww, wh = glfw.get_window_size(window)
         self.scale = fw / ww
@@ -207,11 +227,13 @@ class ShowObj:
         self.window_load(window)
         # Loop until the user closes the window
         while not glfw.window_should_close(window) or self.result > 0:
-            self.perspective()
-            self.viewpoint()
+            with self.render_procedure():
+                self.perspective()
+                self.viewpoint()
 
-            # Render here, e.g. using pyOpenGL
-            self.draw_model()
+                self.lighting()
+                # Render here, e.g. using pyOpenGL
+                self.draw_model()
 
             # Swap front and back buffers
             glfw.swap_buffers(window)

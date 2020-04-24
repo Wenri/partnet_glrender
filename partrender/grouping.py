@@ -112,7 +112,7 @@ class GroupObj(RenderObj):
             with self.set_render_name(cls_name.replace('/', '_')):
                 self.del_set = set(idx for idx in range(len(self.scene.mesh_list)) if idx not in set(id_list))
                 self.sel_set = set()
-                self.look_at_reset()
+                self.default_param()
                 print(self.del_set)
 
             for c in range(2 ** CLUSTER_DIM - 2):
