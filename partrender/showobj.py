@@ -206,7 +206,7 @@ class ShowObj:
 
         self.window_load(window)
         # Loop until the user closes the window
-        while not glfw.window_should_close(window):
+        while not glfw.window_should_close(window) or self.result > 0:
             self.perspective()
             self.viewpoint()
 
@@ -222,6 +222,7 @@ class ShowObj:
             if glfw.window_should_close(window):
                 self.window_closing(window)
 
+        assert self.result <= 0, 'NOT POSSIBLE'
         glfw.terminate()
 
     def do_part(self, partid):

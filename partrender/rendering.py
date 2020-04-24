@@ -141,10 +141,13 @@ class RenderObj(ShowObj):
     def fast_switching(self):
         is_fast_switching = True
         if self.result == 1:
+            print('Switching Ahead...')
             self.imageid = min(self.imageid + 1, len(conf.dblist) - 1)
         elif self.result == 2:
+            print('Switching Back...')
             self.imageid = max(0, self.imageid - 1)
         else:
+            print('Closing...')
             is_fast_switching = False
         return is_fast_switching
 
