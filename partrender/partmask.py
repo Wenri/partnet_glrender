@@ -73,8 +73,11 @@ class MaskObj(RenderObj):
             material.vertex_format = 'C4F_N3F_V3F'
 
     def __call__(self, *args, **kwargs):
-        im_id = conf.dblist[self.imageid]
         try:
+            im_id = conf.dblist[self.imageid]
+            print('Rendering...', self.imageid, im_id, end=' ')
+            self.render_ack.wait()
+            print('Done.')
             with open(os.path.join(conf.partmask_dir, im_id, 'render-CLSNAME.txt'),
                       mode='w') as f:
                 for idx, mesh in enumerate(self.scene.mesh_list):
@@ -84,9 +87,7 @@ class MaskObj(RenderObj):
                         conf_mesh_name, _ = os.path.splitext(file_name)
                         mesh_name, _ = os.path.splitext(mesh.name)
                         assert conf_mesh_name == mesh_name
-                        group_name = conf.find_group_name(cls_name)
-                        print(conf_im_id, idx, group_name, cls_name, file_name, file=f)
-            self.render_ack.wait()
+                        print(conf_im_id, idx, cls_name, file_name, file=f)
 
             for i in range(10):
                 with self.set_render_name('seed_{}'.format(i), wait=True):
