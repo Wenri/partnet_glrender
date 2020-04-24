@@ -83,6 +83,7 @@ class RenderObj(ShowObj):
 
             if vertex_format == GL_C4F_N3F_V3F and self.view_mode:
                 glEnable(GL_COLOR_MATERIAL)
+                glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
 
             glInterleavedArrays(vertex_format, 0, material.gl_floats)
             glDrawArrays(GL_TRIANGLES, 0, int(material.triangle_count))

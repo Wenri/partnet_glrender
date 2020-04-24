@@ -174,7 +174,7 @@ class GroupObj(RenderObj):
         super(GroupObj, self).window_closing(window)
 
 
-def main(idx, autogen=True):
+def main(idx, autogen=False):
     show = GroupObj(idx, autogen)
     show.show_obj()
 
