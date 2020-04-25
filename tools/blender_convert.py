@@ -22,17 +22,17 @@ def traverse(records, base_name=None, obj_set=None):
     for record in records:
         cur_name = base_name + '/' + record['name'] if base_name else record['name']
 
-        children_set = set()
-        if 'children' in record:
-            yield from traverse(record['children'], cur_name, children_set)
-
         record_objs = record['objs']
         record_set = set(record_objs)
-        assert record_set.issuperset(children_set), 'Children have more mesh than parent'
-        assert len(record_set) == len(record_objs), 'Node has duplicate mesh'
-        assert not record_set.intersection(obj_set), 'Node has duplicate mesh with previous node'
+        assert len(record_set) == len(record_objs) and not record_set.intersection(obj_set), 'Node has duplicate mesh'
         obj_set.update(record_set)
-        record_objs = [o for o in record_objs if o not in children_set]
+
+        if 'children' in record:
+            children_set = set()
+            yield from traverse(record['children'], cur_name, children_set)
+            assert record_set.issuperset(children_set), 'Children have more mesh than parent'
+            record_objs = [o for o in record_objs if o not in children_set]
+
         if record_objs:
             yield cur_name, record_objs
 
