@@ -16,28 +16,32 @@ def load_json(im_id: int):
     return d
 
 
-def traverse(records, base_name=None):
+def traverse(records, base_name=None, obj_set=None):
+    if obj_set is None:
+        obj_set = set()
     for record in records:
         cur_name = base_name + '/' + record['name'] if base_name else record['name']
 
+        children_set = set()
         if 'children' in record:
-            yield from traverse(record['children'], base_name=cur_name)
-        elif 'objs' in record:
-            yield cur_name, record['objs']
-        else:
-            raise Exception(cur_name)
+            yield from traverse(record['children'], cur_name, children_set)
+
+        record_objs = record['objs']
+        record_set = set(record_objs)
+        assert record_set.issuperset(children_set), 'Children have more mesh than parent'
+        assert len(record_set) == len(record_objs), 'Node has duplicate mesh'
+        assert not record_set.intersection(obj_set), 'Node has duplicate mesh with previous node'
+        obj_set.update(record_set)
+        record_objs = [o for o in record_objs if o not in children_set]
+        if record_objs:
+            yield cur_name, record_objs
 
 
 def load_obj_files(obj):
     obj_meta = obj['meta']
-    obj_dict = set()
     for name, parts in traverse(obj['result_after_merging']):
         for obj_path in parts:
-            if obj_path not in obj_dict:
-                obj_dict.add(obj_path)
-                yield name, urljoin(DATA_DIR, '{}/objs/{}.obj'.format(obj_meta['anno_id'], obj_path))
-            else:
-                raise Exception(name, obj_path)
+            yield name, urljoin(DATA_DIR, '{}/objs/{}.obj'.format(obj_meta['anno_id'], obj_path))
 
 
 def download_id(obj_id):
