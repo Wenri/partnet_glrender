@@ -6,7 +6,7 @@ import glfw
 import numpy as np
 from imageio import imwrite
 from pyglet.gl import *
-from pywavefront.visualization import draw_material
+from pywavefront.visualization import draw_material, gl_light
 from pywavefront.wavefront import Wavefront
 
 from tools.cfgreader import conf
@@ -57,10 +57,10 @@ class ShowObj:
     def add_light_source(self, *, ambient=(0.2, 0.2, 0.2, 1.0), diffuse=(1.0, 1.0, 1.0, 1.0),
                          specular=(1.0, 1.0, 1.0, 1.0), position=(0.0, 4.0, 3.0, 0.0)):
         self.light_source.append({
-            GL_AMBIENT: (GLfloat * 4)(*ambient),
-            GL_DIFFUSE: (GLfloat * 4)(*diffuse),
-            GL_SPECULAR: (GLfloat * 4)(*specular),
-            GL_POSITION: (GLfloat * 4)(*position)
+            GL_AMBIENT: gl_light(ambient),
+            GL_DIFFUSE: gl_light(diffuse),
+            GL_SPECULAR: gl_light(specular),
+            GL_POSITION: gl_light(position)
         })
 
     def clear_light_source(self):

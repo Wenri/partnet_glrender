@@ -55,11 +55,10 @@ class RenderObj(ShowObj):
 
         glPushClientAttrib(GL_CLIENT_VERTEX_ARRAY_BIT)
         glPushAttrib(GL_CURRENT_BIT | GL_ENABLE_BIT | GL_LIGHTING_BIT)
-        glEnable(GL_CULL_FACE)
         glEnable(GL_DEPTH_TEST)
-        glDisable(GL_TEXTURE_2D)
         glEnable(GL_LIGHT0)
-        glCullFace(GL_BACK)
+        glDisable(GL_TEXTURE_2D)
+        glDisable(GL_CULL_FACE)
 
         with self.lock_list[idx]:
             if material.gl_floats is None:
@@ -83,7 +82,7 @@ class RenderObj(ShowObj):
 
             if vertex_format == GL_C4F_N3F_V3F:
                 glEnable(GL_COLOR_MATERIAL)
-                glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
+                glColorMaterial(face, GL_AMBIENT_AND_DIFFUSE)
 
             glInterleavedArrays(vertex_format, 0, material.gl_floats)
             glDrawArrays(GL_TRIANGLES, 0, int(material.triangle_count))

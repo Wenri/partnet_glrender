@@ -83,12 +83,12 @@ class MaskObj(RenderObj):
         self.clear_light_source()
         for i in range(self.n_lights):
             self.add_light_source(ambient=rand_color(0.2 / self.n_lights),
-                                  diffuse=rand_color(1.0 / self.n_lights),
+                                  diffuse=rand_color(0.8 / self.n_lights),
                                   specular=rand_color(0.8 / self.n_lights),
                                   position=rand_pos(i - (self.n_lights - 1) / 2, 4.0, 3.0))
 
         # random vertex color
-        u, v = 0.8 * rs.random_sample(size=2) + 0.1
+        u, v = 0.6 * rs.random_sample(size=2) + 0.2
         diffuse = yuv2rgb(np.array([0.5, u, v]))
         diffuse = rgb2yuv(np.clip(diffuse, 0, 1))
 
