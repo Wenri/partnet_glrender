@@ -2,10 +2,10 @@ import io
 import json
 import os
 import tempfile
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 from urllib.request import urlopen
 
-DATA_DIR = 'http://download.cs.stanford.edu/orion/partnet_dataset/data_v0/'
+DATA_DIR = 'file:///media/data/Datasets/PartNet/data_v0/'
 
 
 def load_json(im_id: int):
@@ -41,13 +41,17 @@ def load_obj_files(obj):
 
 
 def download_id(obj_id):
+    obj = load_json(obj_id)
     with tempfile.TemporaryDirectory() as tmpdirname:
-        obj = load_json(obj_id)
         for name, f in load_obj_files(obj):
-            outfile = os.path.join(tmpdirname, os.path.basename(f))
-            with urlopen(f) as fp:
-                with open(outfile, 'w') as fout:
-                    fout.writelines(io.TextIOWrapper(fp, encoding='utf-8').readlines())
+            parsef = urlparse(f)
+            if parsef.scheme == 'file':
+                outfile = parsef.path
+            else:
+                outfile = os.path.join(tmpdirname, os.path.basename(f))
+                with urlopen(f) as fp:
+                    with open(outfile, 'w') as fout:
+                        fout.writelines(io.TextIOWrapper(fp, encoding='utf-8').readlines())
             yield name, outfile
 
 
@@ -64,9 +68,9 @@ def blender_convert_id(obj_id, save_dir):
 
 
 def main():
-    save_dir = '/media/data/Research/partnet_export'
+    save_dir = '/media/data/Research/partnet_blenderexport'
     list_file = os.path.join(save_dir, 'list.txt')
     with open(list_file) as lstfp:
         for line in lstfp:
             for id in map(int, line.split()):
-                download_id(id, save_dir)
+                blender_convert_id(id, save_dir)
