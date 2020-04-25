@@ -176,3 +176,12 @@ class RenderObj(ShowObj):
         imwrite(os.path.join(file_path, f'{im_name}-RGB.png'), img)
         savemat(os.path.join(file_path, f'{im_name}-DEPTH.mat'), {'depth': depth}, do_compression=True)
         imwrite(os.path.join(file_path, f'{im_name}-STENCIL.png'), stencil)
+
+
+def main(idx, autogen=False):
+    show = RenderObj(idx, autogen)
+    show.show_obj()
+
+
+if __name__ == '__main__':
+    main(0)

@@ -2,6 +2,7 @@ import hashlib
 import operator
 import os
 from functools import reduce
+from math import cos, sin, pi
 from threading import Thread
 
 import numpy as np
@@ -52,13 +53,15 @@ class MaskObj(RenderObj):
 
     def random_seed(self, s, seed=0xdeadbeef):
         # seeding numpy random state
-        halg = hashlib.md5()
-        halg.update('random_state_{}'.format(s).encode())
+        halg = hashlib.sha1()
+        s = 'Random seed {} with {} lights'.format(s, self.n_lights)
+        print(s, end=' ')
+        halg.update(s.encode())
         s = halg.digest()
         s = reduce(operator.xor, (int.from_bytes(s[i * 4:i * 4 + 4], byteorder='little') for i in range(len(s) // 4)))
         s ^= seed
         rs = np.random.RandomState(seed=s)
-        print("Random Seed {}".format(s))
+        print(s)
 
         # random view angle
         rx, ry = rs.random_sample(size=2)
@@ -75,17 +78,18 @@ class MaskObj(RenderObj):
             return r, g, b, 1.0
 
         def rand_pos(*pos):
-            pos_sample = rs.random_sample(size=3)
+            pos_sample = rs.standard_normal(size=3) / 3
             x, y, z = pos_sample + np.array(pos)
             return x, y, z, 0.0
 
         # random light source
         self.clear_light_source()
+        w, d, s = 4, 1, pi / (self.n_lights - 1)
         for i in range(self.n_lights):
             self.add_light_source(ambient=rand_color(0.2 / self.n_lights),
                                   diffuse=rand_color(0.8 / self.n_lights),
                                   specular=rand_color(0.8 / self.n_lights),
-                                  position=rand_pos(i - (self.n_lights - 1) / 2, 4.0, 3.0))
+                                  position=rand_pos(w * cos(s * i), 4, 4 - d * sin(s * i)))
 
         # random vertex color
         u, v = 0.6 * rs.random_sample(size=2) + 0.2

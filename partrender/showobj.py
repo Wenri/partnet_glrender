@@ -92,7 +92,8 @@ class ShowObj:
 
     def lighting(self):
         glEnable(GL_LIGHTING)
-
+        glLightModeli(GL_LIGHT_MODEL_LOCAL_VIEWER, GL_TRUE)
+        glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE)
         for i in range(self.max_lights):
             lid = GL_LIGHT0 + i
             if i < len(self.light_source):
@@ -103,10 +104,12 @@ class ShowObj:
                 glDisable(lid)
 
     def draw_model(self):
+        glShadeModel(GL_SMOOTH)
         glEnable(GL_DEPTH_TEST)
         glDepthFunc(GL_LESS)
 
         glEnable(GL_STENCIL_TEST)
+        glEnable(GL_MULTISAMPLE)
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT)
         # glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
@@ -200,6 +203,7 @@ class ShowObj:
         if not glfw.init():
             raise RuntimeError('An error occurred')
 
+        glfw.window_hint(0x0002100D, 16)  # GLFW_SAMPLES
         # Create a windowed mode window and its OpenGL context
         window = glfw.create_window(1280, 800, self.title, None, None)
         if not window:
