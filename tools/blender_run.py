@@ -12,5 +12,6 @@ def import_file(full_name, path):
     return mod
 
 
+global cur_id
 cvt = import_file('cvt', '/home/wenri/Git/partnet_dataset/blender_render.py')
-cvt.main()
+cvt.main(cur_id)
