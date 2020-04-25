@@ -72,10 +72,9 @@ def blender_convert_id(obj_id, save_dir):
     bpy.ops.export_scene.obj(filepath=os.path.join(save_dir, "{}.obj".format(obj_id)))
 
 
-def main(cur_id, n_cpu=4):
+def main():
     save_dir = '/media/data/Research/partnet_blenderexport'
     list_file = os.path.join(save_dir, 'list.txt')
     with open(list_file) as lstfp:
-        for i, id in enumerate(int(s) for s in chain.from_iterable(line.split() for line in lstfp)):
-            if i % n_cpu == cur_id:
-                blender_convert_id(id, save_dir)
+        for id in chain.from_iterable(line.split() for line in lstfp):
+            blender_convert_id(int(id), save_dir)
