@@ -62,6 +62,7 @@ def download_id(obj_id):
 
 def blender_convert_id(obj_id, save_dir):
     import bpy
+    bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.object.delete()
 
@@ -73,7 +74,7 @@ def blender_convert_id(obj_id, save_dir):
 
 
 def main():
-    save_dir = '/media/data/Research/partnet_blenderexport'
+    save_dir = '/media/data/Research/partnet_blenderexport2'
     list_file = os.path.join(save_dir, 'list.txt')
     with open(list_file) as lstfp:
         for id in chain.from_iterable(line.split() for line in lstfp):
