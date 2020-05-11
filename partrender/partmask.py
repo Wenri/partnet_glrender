@@ -119,8 +119,9 @@ class MaskObj(RenderObj):
             print('Rendering...', self.imageid, im_id, end=' ')
             self.render_ack.wait()
             print('Done.')
-            with open(os.path.join(conf.partmask_dir, im_id, 'render-CLSNAME.txt'),
-                      mode='w') as f:
+            save_dir = os.path.join(self.render_dir, im_id)
+            os.makedirs(save_dir, exist_ok=True)
+            with open(os.path.join(save_dir, 'render-CLSNAME.txt'), mode='w') as f:
                 for idx, mesh in enumerate(self.scene.mesh_list):
                     for material in mesh.materials:
                         conf_im_id, cls_name, file_name = conf.get_cls_from_mtlname(material.name)
@@ -133,7 +134,10 @@ class MaskObj(RenderObj):
             for i in range(self.n_samples):
                 with self.set_render_name('seed_{}'.format(i), wait=True):
                     self.random_seed('{}-{}'.format(self.imageid, i))
-            self.set_fast_switching()
+            self.load_image(shape_net=2)
+
+            if not self.view_mode:
+                self.set_fast_switching()
         except RuntimeError:
             return
 
@@ -144,4 +148,4 @@ def main(idx, autogen=True):
 
 
 if __name__ == '__main__':
-    main(0)
+    main(0, False)

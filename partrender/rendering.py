@@ -1,6 +1,10 @@
+import glob
+import json
 import os
 from contextlib import contextmanager
+from operator import itemgetter
 from threading import Lock, Condition, Event
+from types import SimpleNamespace
 from typing import Final
 
 import glfw
@@ -41,14 +45,40 @@ class RenderObj(ShowObj):
 
         super().__init__(self.load_image())
 
-    def load_image(self):
-        im_id = conf.dblist[self.imageid]
-        im_file = os.path.join(conf.data_dir, "{}.obj".format(im_id))
+    def load_image(self, shape_net=None):
+        im_file = self.get_partnet_file() if shape_net is None else self.get_shapenet_file(shape_net)
         scene = Wavefront(im_file)
         for material in scene.materials.values():
             material.ambient = [0.2, 0.2, 0.2, 1.0]
-        self.lock_list = [Lock() for i in range(len(scene.mesh_list))]
+        self.lock_list = [Lock() for _ in range(len(scene.mesh_list))]
         return scene
+
+    def get_shapenet_file(self, version):
+        import tools.blender_convert as blcvt
+        blcvt.DATA_DIR = conf.partnet_url
+        im_id = conf.dblist[self.imageid]
+        model_id, model_cat = itemgetter('model_id', 'model_cat')(blcvt.load_json(int(im_id)).meta)
+
+        with open(os.path.join(conf.shapenet_dir, 'taxonomy.json')) as f:
+            taxonomy = [SimpleNamespace(**a) for a in json.load(f)]
+
+        def _gen_synset_id(cat, space):
+            for a in space:
+                if cat in a.name.lower():
+                    yield a.synsetId; yield from a.children
+
+        for synset_id in set(_gen_synset_id(model_cat.lower(), taxonomy)):
+            synset_path = os.path.join(conf.shapenet_dir, synset_id, model_id)
+            if os.path.exists(synset_path):
+                for f in glob.glob(os.path.join(synset_path, 'models', '*.obj')):
+                    if os.path.basename(f).startswith('model'):
+                        return f
+
+        return None
+
+    def get_partnet_file(self):
+        im_id = conf.dblist[self.imageid]
+        return os.path.join(conf.data_dir, "{}.obj".format(im_id))
 
     def draw_material(self, idx, material, face=GL_FRONT_AND_BACK, lighting_enabled=True, textures_enabled=True):
         """Draw a single material"""
@@ -98,11 +128,9 @@ class RenderObj(ShowObj):
         self.render_lock = Lock()
         self.render_req = 0
         self.render_ack = Event()
-        self.render_name = None
-        if not self.view_mode:
-            self.render_name = 'render'
-            self.del_set = set()
-            self.sel_set = set()
+        self.render_name = None if self.view_mode else 'render'
+        if self.view_mode:
+            self.render_ack.set()
 
     @contextmanager
     def set_render_name(self, render_name, wait=False):

@@ -30,25 +30,21 @@ class DBReader(SimpleNamespace):
         if self._idname:
             return self._idname
 
-        idfile = os.path.join(self.data_dir, 'idname.txt')
-        idlist = []
-        self._idname = idlist
-        if not os.path.exists(idfile):
-            return idlist
-
-        total = 0
-        with open(idfile) as f:
-            for line in f:
-                line_s = line.strip()
-                if not line_s:
-                    continue
+        def gen_list(str_it):
+            for total, line_s in enumerate(s for s in map(str.strip, str_it) if s):
                 id, cls, file_path = line_s.split('\t')
                 assert total == int(id)
                 file_path, im_file = os.path.split(file_path)
                 file_path, _ = os.path.split(file_path)
-                idlist.append((os.path.basename(file_path), cls.strip(), im_file))
-                total += 1
-        return idlist
+                im_id = os.path.basename(file_path)
+                yield im_id, cls.strip(), im_file
+
+        idname_txt = os.path.join(self.data_dir, 'idname.txt')
+        assert os.path.exists(idname_txt)
+        with open(idname_txt) as f:
+            self._idname = list(gen_list(f))
+
+        return self._idname
 
     @property
     def groupset(self):
@@ -56,17 +52,11 @@ class DBReader(SimpleNamespace):
             return self._groupset
 
         grouping_txt = os.path.join(self.data_dir, 'grouping.txt')
-        grouping_set = set()
-        self._groupset = grouping_set
-        if not os.path.exists(grouping_txt):
-            return grouping_set
+        assert os.path.exists(grouping_txt)
+        with open(grouping_txt, 'r') as f:
+            self._groupset = set(s for s in map(str.strip, f) if s)
 
-        with open(grouping_txt, 'r') as fgrp:
-            for line in fgrp:
-                line_s = line.strip()
-                if line_s:
-                    grouping_set.add(line_s)
-        return grouping_set
+        return self._groupset
 
     def get_cls_from_mtlname(self, name: str):
         prefix, ext = os.path.splitext(name)

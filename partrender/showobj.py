@@ -53,6 +53,8 @@ class ShowObj:
         self.up_vector = np.array((0, 1, 0), dtype=np.float32)
         self.clear_light_source()
         self.add_light_source()
+        self.del_set.clear()
+        self.sel_set.clear()
 
     def add_light_source(self, *, ambient=(0.2, 0.2, 0.2, 1.0), diffuse=(1.0, 1.0, 1.0, 1.0),
                          specular=(1.0, 1.0, 1.0, 1.0), position=(0.0, 4.0, 3.0, 0.0)):

@@ -2,7 +2,9 @@ import io
 import json
 import os
 import tempfile
+from contextlib import ExitStack
 from itertools import chain
+from types import SimpleNamespace
 from urllib.parse import urljoin, urlparse
 from urllib.request import urlopen
 
@@ -10,11 +12,11 @@ DATA_DIR = 'file:///media/data/Datasets/PartNet/data_v0/'
 
 
 def load_json(im_id: int):
-    d = {}
-    for s in ['result', 'result_after_merging', 'meta']:
+    def _load_s(s):
         with urlopen(urljoin(DATA_DIR, '{}/{}.json'.format(im_id, s))) as fp:
-            d[s] = json.load(fp)
-    return d
+            return json.load(fp)
+
+    return SimpleNamespace(**{k: _load_s(k) for k in ('result', 'result_after_merging', 'meta')})
 
 
 def traverse(records, base_name=None, obj_set=None):
@@ -47,16 +49,18 @@ def load_obj_files(obj):
 
 def download_id(obj_id):
     obj = load_json(obj_id)
-    with tempfile.TemporaryDirectory() as tmpdirname:
+    tmpdirname = None
+    with ExitStack() as stack:
         for name, f in load_obj_files(obj):
             parsef = urlparse(f)
             if parsef.scheme == 'file':
                 outfile = parsef.path
             else:
+                if tmpdirname is None:
+                    tmpdirname = stack.enter_context(tempfile.TemporaryDirectory())
                 outfile = os.path.join(tmpdirname, os.path.basename(f))
-                with urlopen(f) as fp:
-                    with open(outfile, 'w') as fout:
-                        fout.writelines(io.TextIOWrapper(fp, encoding='utf-8').readlines())
+                with urlopen(f) as fp, open(outfile, 'w') as fout:
+                    fout.writelines(io.TextIOWrapper(fp, encoding='utf-8').readlines())
             yield name, outfile
 
 
