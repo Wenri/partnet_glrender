@@ -1,14 +1,20 @@
 import hashlib
 import operator
 import os
+import tempfile
+from ctypes import POINTER
 from functools import reduce
 from math import cos, sin, pi
 from threading import Thread
 
 import numpy as np
+import pcl
+from pyglet.gl import *
 from pywavefront.material import Material
 
 from partrender.rendering import RenderObj
+from ptcloud.pcmatch import PCMatch
+from ptcloud.pointcloud import cvt_obj2pcd
 from tools.cfgreader import conf
 
 
@@ -46,10 +52,36 @@ class MaskObj(RenderObj):
         super(MaskObj, self).__init__(start_id, not auto_generate, conf.partmask_dir)
         self.n_lights = 8
         self.n_samples = 10
+        self.matched_matrix = None
+        self.should_apply_trans = False
+
+    def load_pcd(self, base_dir, n_samples=10000):
+        im_id = conf.dblist[self.imageid]
+        imfile = os.path.join(base_dir, "{}.obj".format(im_id))
+        with tempfile.TemporaryDirectory() as tempdirname:
+            ret = cvt_obj2pcd(imfile, tempdirname, n_samples=n_samples, leaf_size=0.001)
+            assert ret == 0
+            return pcl.load(os.path.join(tempdirname, '{}.pcd'.format(im_id)))
 
     def window_load(self, window):
         super(MaskObj, self).window_load(window)
+        partnet_pcd = self.load_pcd(conf.data_dir)
+        shapenet_pcd = self.load_pcd(conf.shapenet_dir)
+        pcm = PCMatch(partnet_pcd, shapenet_pcd)
+        sim_min, trans, offset = pcm.rotmatrix_match()
+        trans_m = np.hstack((trans, offset[:, np.newaxis]))
+        self.matched_matrix = np.vstack((trans_m, np.array([[0., 0., 0., 1.]])))
+
         Thread(target=self, daemon=True).start()
+
+    def draw_model(self):
+        if self.should_apply_trans:
+            glPushMatrix()
+            glMultMatrixd(self.matched_matrix.ctypes.data_as(POINTER(GLdouble)))
+            super(MaskObj, self).draw_model()
+            glPopMatrix()
+        else:
+            super(MaskObj, self).draw_model()
 
     def random_seed(self, s, seed=0xdeadbeef):
         # seeding numpy random state
@@ -137,6 +169,7 @@ class MaskObj(RenderObj):
 
             with self.set_render_name('texture'):
                 self.scene = self.load_image(conf.shapenet_dir)
+                self.should_apply_trans = True
 
             if not self.view_mode:
                 self.set_fast_switching()

@@ -2,13 +2,15 @@ def make_ext(modname, pyxfilename):
     from distutils.extension import Extension
     import pcl
     import os
+    from pathlib import Path
+
     ext = Extension(name=modname,
                     sources=[pyxfilename],
                     include_dirs=[os.path.dirname(pcl.__file__)],
                     extra_compile_args=[
                         '-std=c++14',
-                        '-I.', '-I/usr/local/include/eigen3',
-                        '-I/usr/local/Cellar/pcl/1.9.1_5/include/pcl-1.9'],
+                        '-I{}'.format(Path(__file__).parent.absolute()), '-I/usr/local/include/eigen3',
+                        '-I/usr/local/include/pcl-1.9'],
                     extra_link_args=['-L/usr/local/lib'],
                     language='c++')
     return ext

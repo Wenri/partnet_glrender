@@ -12,7 +12,7 @@ from tools.matlabengine import Minboundbox, ICP_finite
 
 pyximport.install(language_level=3)
 
-from pcmetric import pclsimilarity
+from ptcloud.pcmetric import pclsimilarity
 
 
 class Error(Exception):
