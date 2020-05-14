@@ -134,7 +134,9 @@ class MaskObj(RenderObj):
             for i in range(self.n_samples):
                 with self.set_render_name('seed_{}'.format(i), wait=True):
                     self.random_seed('{}-{}'.format(self.imageid, i))
-            self.load_image(shape_net=2)
+
+            with self.set_render_name('texture'):
+                self.scene = self.load_image(conf.shapenet_dir)
 
             if not self.view_mode:
                 self.set_fast_switching()

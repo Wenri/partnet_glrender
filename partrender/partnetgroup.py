@@ -5,7 +5,7 @@ from tools import blender_convert
 from tools.blender_convert import load_json, load_obj_files
 from tools.cfgreader import conf
 
-blender_convert.DATA_DIR = conf.partnet_url
+blender_convert.DATA_URL = conf.partnet_url
 
 
 def load_parts_from_file(save_dir):

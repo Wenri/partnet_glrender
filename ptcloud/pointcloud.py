@@ -15,7 +15,7 @@ from tools.cfgreader import conf
 from tools.matlabengine import MatEng
 from ptcloud.pcmatch import PCMatch, pclsimilarity, arr2pt
 
-blender_convert.DATA_DIR = conf.partnet_url
+blender_convert.DATA_URL = conf.partnet_url
 
 
 def cvt_obj2pcd(file, outdir, argv0='pcl_mesh_sampling', **kwargs):

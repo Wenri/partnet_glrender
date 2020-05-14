@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+
+
 def import_file(full_name, path):
     """Import a python module from a path. 3.4+ only.
 
@@ -12,5 +16,6 @@ def import_file(full_name, path):
     return mod
 
 
-cvt = import_file('cvt', '/home/wenri/Git/partnet_dataset/tools/blender_convert.py')
-cvt.main()
+path = Path(sys.modules[__name__].__file__)
+cvt = import_file('cvt', path.parent.joinpath('blender_convert.py'))
+cvt.convert_shapenet('/Volumes/cyber/project/partnet/partnet_shapenetexport', 5943)

@@ -1,10 +1,6 @@
-import glob
-import json
 import os
 from contextlib import contextmanager
-from operator import itemgetter
 from threading import Lock, Condition, Event
-from types import SimpleNamespace
 from typing import Final
 
 import glfw
@@ -12,7 +8,7 @@ import numpy as np
 from imageio import imwrite
 from pyglet.gl import *
 from pywavefront import Wavefront
-from pywavefront.visualization import gl_light
+from pywavefront.visualization import gl_light, bind_texture
 from scipy.io import savemat
 
 from partrender.showobj import ShowObj
@@ -43,42 +39,16 @@ class RenderObj(ShowObj):
         self.lock_list = None
         self.window = None
 
-        super().__init__(self.load_image())
+        super().__init__(self.load_image(conf.data_dir))
 
-    def load_image(self, shape_net=None):
-        im_file = self.get_partnet_file() if shape_net is None else self.get_shapenet_file(shape_net)
+    def load_image(self, base_dir):
+        im_id = conf.dblist[self.imageid]
+        im_file = os.path.join(base_dir, "{}.obj".format(im_id))
         scene = Wavefront(im_file)
         for material in scene.materials.values():
             material.ambient = [0.2, 0.2, 0.2, 1.0]
         self.lock_list = [Lock() for _ in range(len(scene.mesh_list))]
         return scene
-
-    def get_shapenet_file(self, version):
-        import tools.blender_convert as blcvt
-        blcvt.DATA_DIR = conf.partnet_url
-        im_id = conf.dblist[self.imageid]
-        model_id, model_cat = itemgetter('model_id', 'model_cat')(blcvt.load_json(int(im_id)).meta)
-
-        with open(os.path.join(conf.shapenet_dir, 'taxonomy.json')) as f:
-            taxonomy = [SimpleNamespace(**a) for a in json.load(f)]
-
-        def _gen_synset_id(cat, space):
-            for a in space:
-                if cat in a.name.lower():
-                    yield a.synsetId; yield from a.children
-
-        for synset_id in set(_gen_synset_id(model_cat.lower(), taxonomy)):
-            synset_path = os.path.join(conf.shapenet_dir, synset_id, model_id)
-            if os.path.exists(synset_path):
-                for f in glob.glob(os.path.join(synset_path, 'models', '*.obj')):
-                    if os.path.basename(f).startswith('model'):
-                        return f
-
-        return None
-
-    def get_partnet_file(self):
-        im_id = conf.dblist[self.imageid]
-        return os.path.join(conf.data_dir, "{}.obj".format(im_id))
 
     def draw_material(self, idx, material, face=GL_FRONT_AND_BACK, lighting_enabled=True, textures_enabled=True):
         """Draw a single material"""
@@ -87,7 +57,6 @@ class RenderObj(ShowObj):
         glPushAttrib(GL_CURRENT_BIT | GL_ENABLE_BIT | GL_LIGHTING_BIT)
         glEnable(GL_DEPTH_TEST)
         glEnable(GL_LIGHT0)
-        glDisable(GL_TEXTURE_2D)
         glDisable(GL_CULL_FACE)
 
         with self.lock_list[idx]:
@@ -98,6 +67,14 @@ class RenderObj(ShowObj):
             vertex_format = self._VERTEX_FORMATS.get(material.vertex_format)
             if not vertex_format:
                 raise ValueError("Vertex format {} not supported by pyglet".format(material.vertex_format))
+
+            if textures_enabled:
+                # Fall back to ambient texture if no diffuse
+                texture = material.texture or material.texture_ambient
+                if texture and material.has_uvs:
+                    bind_texture(texture)
+                else:
+                    glDisable(GL_TEXTURE_2D)
 
             glMaterialfv(face, GL_DIFFUSE, gl_light(material.diffuse))
             glMaterialfv(face, GL_AMBIENT, gl_light(material.ambient))
@@ -163,7 +140,7 @@ class RenderObj(ShowObj):
             if self.fast_switching():
                 glfw.set_window_should_close(window, GL_FALSE)
                 glfw.poll_events()
-                self.scene = self.load_image()
+                self.scene = self.load_image(conf.data_dir)
                 self.window_load(window)
 
     def fast_switching(self):
