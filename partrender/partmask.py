@@ -2,8 +2,9 @@ import hashlib
 import operator
 import os
 import tempfile
-from ctypes import POINTER
+from contextlib import ExitStack
 from functools import reduce
+from itertools import chain
 from math import cos, sin, pi
 from threading import Thread
 
@@ -54,8 +55,16 @@ class MaskObj(RenderObj):
         self.n_samples = 10
         self.matched_matrix = None
         self.should_apply_trans = False
+        self.old_scene = None
 
-    def load_pcd(self, base_dir, n_samples=10000):
+        def _swap_model(window):
+            if self.old_scene:
+                self.old_scene = self.update_scene(self.old_scene)
+                self.should_apply_trans = not self.should_apply_trans
+
+        self.add_key_func('T', _swap_model)
+
+    def load_pcd(self, base_dir, n_samples=20000):
         im_id = conf.dblist[self.imageid]
         imfile = os.path.join(base_dir, "{}.obj".format(im_id))
         with tempfile.TemporaryDirectory() as tempdirname:
@@ -69,18 +78,15 @@ class MaskObj(RenderObj):
         shapenet_pcd = self.load_pcd(conf.shapenet_dir)
         pcm = PCMatch(partnet_pcd, shapenet_pcd)
         sim_min, trans, offset = pcm.rotmatrix_match()
-        trans_m = np.hstack((trans, offset[:, np.newaxis]))
+        trans_m = np.hstack((np.transpose(trans), offset[:, np.newaxis]))
         self.matched_matrix = np.vstack((trans_m, np.array([[0., 0., 0., 1.]])))
-
+        self.should_apply_trans = False
         Thread(target=self, daemon=True).start()
 
     def draw_model(self):
-        if self.should_apply_trans:
-            glPushMatrix()
-            glMultMatrixd(self.matched_matrix.ctypes.data_as(POINTER(GLdouble)))
-            super(MaskObj, self).draw_model()
-            glPopMatrix()
-        else:
+        with ExitStack() as stack:
+            if self.should_apply_trans:
+                stack.enter_context(self.matrix_trans(self.matched_matrix))
             super(MaskObj, self).draw_model()
 
     def random_seed(self, s, seed=0xdeadbeef):
@@ -163,15 +169,19 @@ class MaskObj(RenderObj):
                         assert conf_mesh_name == mesh_name
                         print(conf_im_id, idx, cls_name, file_name, file=f)
 
-            for i in range(self.n_samples):
-                with self.set_render_name('seed_{}'.format(i), wait=True):
-                    self.random_seed('{}-{}'.format(self.imageid, i))
-
             with self.set_render_name('texture'):
-                self.scene = self.load_image(conf.shapenet_dir)
+                self.old_scene = self.update_scene(self.load_image(conf.shapenet_dir))
                 self.should_apply_trans = True
 
+                for m in chain.from_iterable(mesh.materials for mesh in self.scene.mesh_list):
+                    if t := m.texture:
+                        t.options.clamp = 'off'
+
             if not self.view_mode:
+                for i in range(self.n_samples):
+                    with self.set_render_name('seed_{}'.format(i), wait=True):
+                        self.random_seed('{}-{}'.format(self.imageid, i))
+
                 self.set_fast_switching()
         except RuntimeError:
             return

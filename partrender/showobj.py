@@ -1,5 +1,6 @@
 import os
 from contextlib import contextmanager
+from functools import partial
 from typing import Final
 
 import glfw
@@ -27,7 +28,7 @@ class ShowObj:
         self._cur_sel_idx = (GLubyte * 1)()
         self._selected_idx = None
 
-        self.scene = scene
+        self.scene = None
         self.title = title
         self.cur_rot_mode = False
         self.sel_set = set()
@@ -42,9 +43,16 @@ class ShowObj:
         self.initial_look_at = None
         self.up_vector = None
         self.light_source = []
+        self.key_press_dispatcher = {}
+        self.default_key_func()
+        self.update_scene(scene)
+
+    def update_scene(self, scene):
+        old_scene, self.scene = self.scene, scene
+        return old_scene
 
     @contextmanager
-    def render_procedure(self):
+    def render_locking(self):
         yield
 
     def default_param(self):
@@ -55,6 +63,15 @@ class ShowObj:
         self.add_light_source()
         self.del_set.clear()
         self.sel_set.clear()
+
+    def default_key_func(self):
+        self.key_press_dispatcher.clear()
+        self.add_key_func('D', lambda w: self.del_set.update(self.sel_set))
+        self.add_key_func('N', partial(self.close_with_result, result=1))
+        self.add_key_func('P', partial(self.close_with_result, result=2))
+        self.add_key_func('Q', partial(glfw.set_window_should_close, value=GL_TRUE))
+        self.add_key_func('S', lambda w: imwrite('render.png', self.get_buffer()))
+        self.add_key_func('SPACE', lambda w: self.do_part(cur_idx) if (cur_idx := self.get_cur_sel_idx()) else None)
 
     def add_light_source(self, *, ambient=(0.2, 0.2, 0.2, 1.0), diffuse=(1.0, 1.0, 1.0, 1.0),
                          specular=(1.0, 1.0, 1.0, 1.0), position=(0.0, 4.0, 3.0, 0.0)):
@@ -169,24 +186,12 @@ class ShowObj:
 
     def key_fun(self, window, key, scancode, action, mods):
         if action == glfw.PRESS:
-            if key == glfw.KEY_D:
-                self.del_set.update(self.sel_set)
-            elif key == glfw.KEY_N:
-                self.result = 1
-                glfw.set_window_should_close(window, GL_TRUE)
-            elif key == glfw.KEY_P:
-                self.result = 2
-                glfw.set_window_should_close(window, GL_TRUE)
-            elif key == glfw.KEY_Q:
-                glfw.set_window_should_close(window, GL_TRUE)
-            elif key == glfw.KEY_SPACE:
-                cur_idx = self.get_cur_sel_idx()
-                if not cur_idx:
-                    return
-                self.do_part(cur_idx)
-            elif key == glfw.KEY_S:
-                img = self.get_buffer()
-                imwrite('render.png', img)
+            if func := self.key_press_dispatcher.get(key):
+                func(window)
+
+    def add_key_func(self, key_str, func):
+        key = getattr(glfw, f'KEY_{key_str}')
+        self.key_press_dispatcher[key] = func
 
     def window_size_fun(self, window, width, height):
         glViewport(0, 0, int(width * self.scale), int(height * self.scale))
@@ -233,7 +238,7 @@ class ShowObj:
         self.window_load(window)
         # Loop until the user closes the window
         while not glfw.window_should_close(window) or self.result > 0:
-            with self.render_procedure():
+            with self.render_locking():
                 self.perspective()
                 self.viewpoint()
 
@@ -252,6 +257,10 @@ class ShowObj:
 
         assert self.result <= 0, 'NOT POSSIBLE'
         glfw.terminate()
+
+    def close_with_result(self, window, result=0):
+        self.result = result
+        glfw.set_window_should_close(window, GL_TRUE)
 
     def do_part(self, partid):
         pass

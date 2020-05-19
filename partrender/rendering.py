@@ -1,5 +1,6 @@
 import os
 from contextlib import contextmanager
+from ctypes import POINTER
 from threading import Lock, Condition, Event
 from typing import Final
 
@@ -47,8 +48,12 @@ class RenderObj(ShowObj):
         scene = Wavefront(im_file)
         for material in scene.materials.values():
             material.ambient = [0.2, 0.2, 0.2, 1.0]
-        self.lock_list = [Lock() for _ in range(len(scene.mesh_list))]
         return scene
+
+    def update_scene(self, scene):
+        old_scene = super(RenderObj, self).update_scene(scene)
+        self.lock_list = [Lock() for _ in range(len(scene.mesh_list))]
+        return old_scene
 
     def draw_material(self, idx, material, face=GL_FRONT_AND_BACK, lighting_enabled=True, textures_enabled=True):
         """Draw a single material"""
@@ -110,6 +115,13 @@ class RenderObj(ShowObj):
             self.render_ack.set()
 
     @contextmanager
+    def matrix_trans(self, matrix: np.ndarray):
+        glPushMatrix()
+        glMultMatrixd(matrix.ctypes.data_as(POINTER(GLdouble)))
+        yield
+        glPopMatrix()
+
+    @contextmanager
     def set_render_name(self, render_name, wait=False):
         with self.render_cmd:
             if self.closing:
@@ -140,7 +152,7 @@ class RenderObj(ShowObj):
             if self.fast_switching():
                 glfw.set_window_should_close(window, GL_FALSE)
                 glfw.poll_events()
-                self.scene = self.load_image(conf.data_dir)
+                self.update_scene(self.load_image(conf.data_dir))
                 self.window_load(window)
 
     def fast_switching(self):
@@ -157,8 +169,8 @@ class RenderObj(ShowObj):
         return is_fast_switching
 
     @contextmanager
-    def render_procedure(self):
-        with super(RenderObj, self).render_procedure():
+    def render_locking(self):
+        with super(RenderObj, self).render_locking():
             with self.render_cmd:
                 if self.render_req > 0:
                     self.render_req -= 1

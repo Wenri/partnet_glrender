@@ -90,7 +90,7 @@ class ShapenetFileHelper:
                     synset_path = os.path.join(db_dir, synset_id, model_id)
                     if os.path.exists(synset_path):
                         print('Hit {} at {}@{}'.format(os.path.basename(db_dir), synset_id, nid))
-                        for f in glob.glob(os.path.join(synset_path, 'models', '*.obj')):
+                        for f in glob.glob(os.path.join(synset_path, '**', '*.obj'), recursive=True):
                             name = os.path.basename(f)
                             if name.startswith('model'):
                                 yield name, f
