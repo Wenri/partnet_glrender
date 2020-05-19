@@ -11,8 +11,7 @@ from urllib.parse import urljoin, urlparse
 from urllib.request import urlopen
 
 DATA_URL = 'file:///Volumes/gbcdisk/research/PartNet/data_v0/'
-SHAPENET_DIR = ['/Volumes/gbcdisk/research/ShapeNet/shapenetcorev2/ShapeNetCore.v2',
-                '/Volumes/gbcdisk/research/ShapeNet/shapenetcorev1/ShapeNetCore.v1']
+SHAPENET_PREFIX = '/Volumes/gbcdisk/research/ShapeNet/'
 
 
 def load_json(obj_id):
@@ -67,34 +66,48 @@ def download_id(obj_id):
 
 
 class ShapenetFileHelper:
-    def __init__(self):
+    def __init__(self, prefix, version=('v1', 'v2'), pattern=os.path.join('shapenetcore{v}', 'ShapeNetCore.{v}')):
         def _get_taxonomy(d):
             with open(os.path.join(d, 'taxonomy.json')) as f:
                 return [SimpleNamespace(**a) for a in json.load(f)]
 
-        self.taxonomy = [_get_taxonomy(d) for d in SHAPENET_DIR]
+        if isinstance(version, str):
+            version = [version]
 
-    def __call__(self, obj_id):
+        self.shapenet_dir = [os.path.join(prefix, pattern.format(v=v)) for v in version]
+        self.taxonomy = [_get_taxonomy(d) for d in self.shapenet_dir]
+
+    def _gen_synset_id(self, tmy_id, cat=None):
+        for a in self.taxonomy[tmy_id]:
+            if not cat or cat in a.name.lower():
+                yield a.synsetId
+                yield from a.children
+
+    def _get_synset_id_set(self, tmy_id, cat_hint):
+        cat_s = set(self._gen_synset_id(tmy_id, cat_hint.lower()))
+        return cat_s, set(self._gen_synset_id(tmy_id)) - cat_s
+
+    def _find_model_id(self, tmy_id, model_id, model_cat):
+        for synset_id in chain.from_iterable(self._get_synset_id_set(tmy_id, model_cat)):
+            synset_path = os.path.join(self.shapenet_dir[tmy_id], synset_id, model_id)
+            if os.path.exists(synset_path):
+                return synset_path
+        return None
+
+    def __call__(self, obj_id, all_db=False):
         model_id, model_cat = itemgetter('model_id', 'model_cat')(load_json(obj_id).meta)
 
-        def _gen_synset_id(tmy, cat=None):
-            assert not cat or cat.islower()
-            for a in tmy:
-                if not cat or cat in a.name.lower():
-                    yield a.synsetId
-                    yield from a.children
-
-        for db_dir, taxonomy in zip(SHAPENET_DIR, self.taxonomy):
-            for s_set in (set(_gen_synset_id(taxonomy, s)) for s in (model_cat.lower(), None)):
-                for nid, synset_id in enumerate(s_set):
-                    synset_path = os.path.join(db_dir, synset_id, model_id)
-                    if os.path.exists(synset_path):
-                        print('Hit {} at {}@{}'.format(os.path.basename(db_dir), synset_id, nid))
-                        for f in glob.glob(os.path.join(synset_path, '**', '*.obj'), recursive=True):
-                            name = os.path.basename(f)
-                            if name.startswith('model'):
-                                yield name, f
-                        return
+        for tmy_id in range(len(self.shapenet_dir)):
+            synset_path = self._find_model_id(tmy_id, model_id, model_cat)
+            if not synset_path:
+                continue
+            print('Hit {}'.format(synset_path))
+            for f in glob.glob(os.path.join(synset_path, '**', '*.obj'), recursive=True):
+                name = os.path.basename(f)
+                if name.startswith('model'):
+                    yield name, f
+            if not all_db:
+                return
 
         raise RuntimeError("obj_id not found: {}".format(obj_id))
 
@@ -126,4 +139,4 @@ def convert_shapenet(save_dir, start=0):
         for i, id in enumerate(chain.from_iterable(line.split() for line in lstfp)):
             if i < start:
                 continue
-            blender_convert_id(int(id), save_dir, helper=ShapenetFileHelper())
+            blender_convert_id(int(id), save_dir, helper=ShapenetFileHelper(SHAPENET_PREFIX, version='v1'))

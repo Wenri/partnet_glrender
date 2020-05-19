@@ -18,4 +18,4 @@ def import_file(full_name, path):
 
 path = Path(sys.modules[__name__].__file__)
 cvt = import_file('cvt', path.parent.joinpath('blender_convert.py'))
-cvt.convert_shapenet('/Volumes/cyber/project/partnet/partnet_shapenetexport', 5943)
+cvt.convert_shapenet('/Volumes/cyber/project/partnet/partnet_shapenetexport_v1')
