@@ -3,8 +3,7 @@ import operator
 import os
 import tempfile
 from contextlib import ExitStack
-from functools import reduce
-from itertools import chain
+from functools import reduce, partial
 from math import cos, sin, pi
 from threading import Thread
 
@@ -57,12 +56,14 @@ class MaskObj(RenderObj):
         self.should_apply_trans = False
         self.old_scene = None
 
-        def _swap_model(window):
-            if self.old_scene:
-                self.old_scene = self.update_scene(self.old_scene)
-                self.should_apply_trans = not self.should_apply_trans
+        self.add_key_func('T', self.swap_scene)
+        self.add_key_func('G', partial(self.swap_scene, toggle_trans=False))
 
-        self.add_key_func('T', _swap_model)
+    def swap_scene(self, toggle_trans=True):
+        if self.old_scene:
+            self.old_scene = self.update_scene(self.old_scene)
+            if toggle_trans:
+                self.should_apply_trans = not self.should_apply_trans
 
     def load_pcd(self, base_dir, n_samples=20000):
         im_id = conf.dblist[self.imageid]
@@ -80,7 +81,12 @@ class MaskObj(RenderObj):
         sim_min, trans, offset = pcm.rotmatrix_match()
         trans_m = np.hstack((np.transpose(trans), offset[:, np.newaxis]))
         self.matched_matrix = np.vstack((trans_m, np.array([[0., 0., 0., 1.]])))
-        self.should_apply_trans = False
+        self.should_apply_trans = True
+        self.old_scene = self.update_scene(self.load_image(conf.shapenet_dir))
+        # for m in chain.from_iterable(mesh.materials for mesh in self.scene.mesh_list):
+        #     if t := m.texture:
+        #         t.options.clamp = 'off'
+
         Thread(target=self, daemon=True).start()
 
     def draw_model(self):
@@ -155,34 +161,31 @@ class MaskObj(RenderObj):
         try:
             im_id = conf.dblist[self.imageid]
             print('Rendering...', self.imageid, im_id, end=' ')
-            self.render_ack.wait()
-            print('Done.')
-            save_dir = os.path.join(self.render_dir, im_id)
-            os.makedirs(save_dir, exist_ok=True)
-            with open(os.path.join(save_dir, 'render-CLSNAME.txt'), mode='w') as f:
-                for idx, mesh in enumerate(self.scene.mesh_list):
-                    for material in mesh.materials:
-                        conf_im_id, cls_name, file_name = conf.get_cls_from_mtlname(material.name)
-                        assert conf_im_id == im_id
-                        conf_mesh_name, _ = os.path.splitext(file_name)
-                        mesh_name, _ = os.path.splitext(mesh.name)
-                        assert conf_mesh_name == mesh_name
-                        print(conf_im_id, idx, cls_name, file_name, file=f)
-
-            with self.set_render_name('texture'):
-                self.old_scene = self.update_scene(self.load_image(conf.shapenet_dir))
-                self.should_apply_trans = True
-
-                for m in chain.from_iterable(mesh.materials for mesh in self.scene.mesh_list):
-                    if t := m.texture:
-                        t.options.clamp = 'off'
 
             if not self.view_mode:
+                save_dir = os.path.join(self.render_dir, im_id)
+                os.makedirs(save_dir, exist_ok=True)
+                with open(os.path.join(save_dir, 'render-CLSNAME.txt'), mode='w') as f:
+                    for idx, mesh in enumerate(self.old_scene.mesh_list):
+                        for material in mesh.materials:
+                            conf_im_id, cls_name, file_name = conf.get_cls_from_mtlname(material.name)
+                            assert conf_im_id == im_id
+                            conf_mesh_name, _ = os.path.splitext(file_name)
+                            mesh_name, _ = os.path.splitext(mesh.name)
+                            assert conf_mesh_name == mesh_name
+                            print(conf_im_id, idx, cls_name, file_name, file=f)
+
                 for i in range(self.n_samples):
                     with self.set_render_name('seed_{}'.format(i), wait=True):
+                        self.swap_scene()
                         self.random_seed('{}-{}'.format(self.imageid, i))
+                    with self.set_render_name('seed_{}T'.format(i), wait=True):
+                        self.swap_scene()
+            else:
+                self.render_ack.wait()
 
-                self.set_fast_switching()
+            print('Done.')
+            self.set_fast_switching()
         except RuntimeError:
             return
 
@@ -193,4 +196,4 @@ def main(idx, autogen=True):
 
 
 if __name__ == '__main__':
-    main(0, False)
+    main(0, True)
