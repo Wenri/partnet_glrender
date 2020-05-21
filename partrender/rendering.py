@@ -1,6 +1,8 @@
 import os
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from ctypes import POINTER
+from functools import partial
+from itertools import chain
 from threading import Lock, Condition, Event
 from typing import Final
 
@@ -64,7 +66,8 @@ class RenderObj(ShowObj):
         glEnable(GL_LIGHT0)
         glDisable(GL_CULL_FACE)
 
-        with self.lock_list[idx]:
+        with ExitStack() as stack:
+            stack.enter_context(self.lock_list[idx])
             if material.gl_floats is None:
                 material.gl_floats = np.asarray(material.vertices, dtype=np.float32).ctypes
                 material.triangle_count = len(material.vertices) / material.vertex_size
@@ -78,6 +81,7 @@ class RenderObj(ShowObj):
                 texture = material.texture or material.texture_ambient
                 if texture and material.has_uvs:
                     bind_texture(texture)
+                    stack.callback(partial(glBindTexture, texture.image.target, 0))
                 else:
                     glDisable(GL_TEXTURE_2D)
 
@@ -149,13 +153,18 @@ class RenderObj(ShowObj):
             if self.render_req > 0:
                 self.render_cmd.notify_all()
         with self.render_lock:
-            if self.fast_switching():
+            self.free_texture()
+            if self.cleaning_and_switching():
                 glfw.set_window_should_close(window, GL_FALSE)
                 glfw.poll_events()
                 self.update_scene(self.load_image(conf.data_dir))
                 self.window_load(window)
 
-    def fast_switching(self):
+    def free_texture(self):
+        for mtl in chain.from_iterable(mesh.materials for mesh in self.scene.mesh_list):
+            del mtl.texture
+
+    def cleaning_and_switching(self):
         is_fast_switching = True
         if self.result == 1:
             print('Switching Ahead...')

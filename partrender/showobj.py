@@ -206,15 +206,28 @@ class ShowObj:
         self.closing = True
 
     def show_obj(self):
+        with self._setup_window() as window:
+            self._update_gl_variable(window)
+            self.window_load(window)
+            self._main_loop(window)
+
+        return self.result
+
+    def close_with_result(self, window, result=0):
+        self.result = result
+        glfw.set_window_should_close(window, GL_TRUE)
+
+    @contextmanager
+    def _setup_window(self):
         # Initialize the library
         if not glfw.init():
-            raise RuntimeError('An error occurred')
+            raise RuntimeError('An error occurred when calling glfw.init')
 
         glfw.window_hint(0x0002100D, 16)  # GLFW_SAMPLES
         # Create a windowed mode window and its OpenGL context
         window = glfw.create_window(1280, 800, self.title, None, None)
         if not window:
-            raise RuntimeError('An error occurred')
+            raise RuntimeError('An error occurred when creating window')
 
         # Make the window's context current
         glfw.make_context_current(window)
@@ -225,17 +238,26 @@ class ShowObj:
         glfw.set_key_callback(window, self.key_fun)
         glfw.set_window_size_callback(window, self.window_size_fun)
 
+        yield window
+
+        glfw.terminate()
+
+    def _update_gl_variable(self, window):
+        # max_lights
         max_lights = (GLint * 1)()
         glGetIntegerv(GL_MAX_LIGHTS, max_lights)
         [self.max_lights] = max_lights
+
+        # viewport
         glGetIntegerv(GL_VIEWPORT, self.viewport)
 
+        # scale
         fw, fh = glfw.get_framebuffer_size(window)
         ww, wh = glfw.get_window_size(window)
         self.scale = fw / ww
         assert fh / wh == self.scale
 
-        self.window_load(window)
+    def _main_loop(self, window):
         # Loop until the user closes the window
         while not glfw.window_should_close(window) or self.result > 0:
             with self.render_locking():
@@ -256,11 +278,6 @@ class ShowObj:
                 self.window_closing(window)
 
         assert self.result <= 0, 'NOT POSSIBLE'
-        glfw.terminate()
-
-    def close_with_result(self, window, result=0):
-        self.result = result
-        glfw.set_window_should_close(window, GL_TRUE)
 
     def do_part(self, partid):
         pass

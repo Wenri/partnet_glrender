@@ -1,9 +1,11 @@
+import faulthandler
 import hashlib
 import operator
 import os
 import tempfile
 from contextlib import ExitStack
 from functools import reduce, partial
+from itertools import chain
 from math import cos, sin, pi
 from threading import Thread
 
@@ -191,9 +193,10 @@ class MaskObj(RenderObj):
 
 
 def main(idx, autogen=True):
+    faulthandler.enable()
     show = MaskObj(idx, autogen)
     show.show_obj()
 
 
 if __name__ == '__main__':
-    main(0, True)
+    main(1000, True)
