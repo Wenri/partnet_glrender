@@ -14,6 +14,13 @@ DATA_URL = 'file:///Volumes/gbcdisk/research/PartNet/data_v0/'
 SHAPENET_PREFIX = '/Volumes/gbcdisk/research/ShapeNet/'
 
 
+def path_split_all(path):
+    path, part = os.path.split(path)
+    if path:
+        yield from path_split_all(path)
+    yield part
+
+
 def load_json(obj_id):
     def _load_s(s):
         with urlopen(urljoin(DATA_URL, '{}/{}.json'.format(obj_id, s))) as fp:
@@ -66,7 +73,7 @@ def download_id(obj_id):
 
 
 class ShapenetFileHelper:
-    def __init__(self, prefix, version=('v1', 'v2'), pattern=os.path.join('shapenetcore{v}', 'ShapeNetCore.{v}')):
+    def __init__(self, prefix, version=('v2', 'v1'), pattern=os.path.join('shapenetcore{v}', 'ShapeNetCore.{v}')):
         def _get_taxonomy(d):
             with open(os.path.join(d, 'taxonomy.json')) as f:
                 return [SimpleNamespace(**a) for a in json.load(f)]
@@ -77,30 +84,25 @@ class ShapenetFileHelper:
         self.shapenet_dir = [os.path.join(prefix, pattern.format(v=v)) for v in version]
         self.taxonomy = [_get_taxonomy(d) for d in self.shapenet_dir]
 
-    def _gen_synset_id(self, tmy_id, cat=None):
-        for a in self.taxonomy[tmy_id]:
+    def _gen_synset_id(self, db_id, cat=None):
+        for a in self.taxonomy[db_id]:
             if not cat or cat in a.name.lower():
                 yield a.synsetId
                 yield from a.children
 
-    def _get_synset_id_set(self, tmy_id, cat_hint):
-        cat_s = set(self._gen_synset_id(tmy_id, cat_hint.lower()))
-        return cat_s, set(self._gen_synset_id(tmy_id)) - cat_s
+    def _get_synset_id_set(self, db_id, cat_hint):
+        cat_s = set(self._gen_synset_id(db_id, cat_hint.lower()))
+        return cat_s, set(self._gen_synset_id(db_id)) - cat_s
 
-    def _find_model_id(self, tmy_id, model_id, model_cat):
-        for synset_id in chain.from_iterable(self._get_synset_id_set(tmy_id, model_cat)):
-            synset_path = os.path.join(self.shapenet_dir[tmy_id], synset_id, model_id)
-            if os.path.exists(synset_path):
-                return synset_path
-        return None
+    def find_model_id(self, obj_id):
+        model_id, model_cat = itemgetter('model_id', 'model_cat')(load_json(obj_id).meta)
+        for db_id in range(len(self.shapenet_dir)):
+            for synset_id in chain.from_iterable(self._get_synset_id_set(db_id, model_cat)):
+                if os.path.exists(synset_path := os.path.join(self.shapenet_dir[db_id], synset_id, model_id)):
+                    yield synset_path
 
     def __call__(self, obj_id, all_db=False):
-        model_id, model_cat = itemgetter('model_id', 'model_cat')(load_json(obj_id).meta)
-
-        for tmy_id in range(len(self.shapenet_dir)):
-            synset_path = self._find_model_id(tmy_id, model_id, model_cat)
-            if not synset_path:
-                continue
+        for synset_path in self.find_model_id(obj_id):
             print('Hit {}'.format(synset_path))
             for f in glob.glob(os.path.join(synset_path, '**', '*.obj'), recursive=True):
                 name = os.path.basename(f)

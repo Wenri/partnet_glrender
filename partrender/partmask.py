@@ -2,21 +2,26 @@ import faulthandler
 import hashlib
 import operator
 import os
+import subprocess
+import sys
 import tempfile
 from contextlib import ExitStack
 from functools import reduce, partial
 from itertools import chain
 from math import cos, sin, pi
+from pathlib import Path
 from threading import Thread
 
 import numpy as np
 import pcl
+from more_itertools import first
 from pyglet.gl import *
 from pywavefront.material import Material
 
 from partrender.rendering import RenderObj
 from ptcloud.pcmatch import PCMatch
 from ptcloud.pointcloud import cvt_obj2pcd
+from tools.blender_convert import ShapenetFileHelper
 from tools.cfgreader import conf
 
 
@@ -57,6 +62,7 @@ class MaskObj(RenderObj):
         self.matched_matrix = None
         self.should_apply_trans = False
         self.old_scene = None
+        self.model_id = 0
 
         self.add_key_func('T', self.swap_scene)
         self.add_key_func('G', partial(self.swap_scene, toggle_trans=False))
@@ -67,27 +73,45 @@ class MaskObj(RenderObj):
             if toggle_trans:
                 self.should_apply_trans = not self.should_apply_trans
 
-    def load_pcd(self, base_dir, n_samples=20000):
+    def load_pcd(self, base_dir, n_samples=20000, leaf_size=0.001):
         im_id = conf.dblist[self.imageid]
         imfile = os.path.join(base_dir, "{}.obj".format(im_id))
         with tempfile.TemporaryDirectory() as tempdirname:
-            ret = cvt_obj2pcd(imfile, tempdirname, n_samples=n_samples, leaf_size=0.001)
-            assert ret == 0
+            ret = cvt_obj2pcd(imfile, tempdirname, n_samples=n_samples, leaf_size=leaf_size)
+            if ret.stderr:
+                print(f'cvt_obj2pcd {os.path.basename(base_dir)} {im_id}: ', ret.stderr, file=sys.stderr)
             return pcl.load(os.path.join(tempdirname, '{}.pcd'.format(im_id)))
 
-    def window_load(self, window):
-        super(MaskObj, self).window_load(window)
-        partnet_pcd = self.load_pcd(conf.data_dir)
-        shapenet_pcd = self.load_pcd(conf.shapenet_dir)
+    def calc_apply_matched_matrix(self):
+        partnet_pcd = self.load_pcd(conf.data_dir, leaf_size=0.002)
+        shapenet_pcd = self.load_pcd(conf.shapenet_dir, leaf_size=0.001)
         pcm = PCMatch(partnet_pcd, shapenet_pcd)
         sim_min, trans, offset = pcm.rotmatrix_match()
         trans_m = np.hstack((np.transpose(trans), offset[:, np.newaxis]))
         self.matched_matrix = np.vstack((trans_m, np.array([[0., 0., 0., 1.]])))
         self.should_apply_trans = True
-        self.old_scene = self.update_scene(self.load_image(conf.shapenet_dir))
-        # for m in chain.from_iterable(mesh.materials for mesh in self.scene.mesh_list):
-        #     if t := m.texture:
-        #         t.options.clamp = 'off'
+
+    def load_shapenet(self):
+        helper = ShapenetFileHelper(prefix=conf.shapenet_prefix)
+        search_path = first(helper.find_model_id(conf.dblist[self.imageid]))
+        print(f"{search_path=}")
+        self.model_id = os.path.basename(search_path)
+        scene = self.load_image(conf.shapenet_dir)
+        for m in chain.from_iterable(mesh.materials for mesh in scene.mesh_list):
+            if t := m.texture:
+                t._search_path = Path(search_path)
+        return scene
+
+    def window_load(self, window):
+        super(MaskObj, self).window_load(window)
+        try:
+            scene = self.load_shapenet()
+            self.calc_apply_matched_matrix()
+            self.old_scene = self.update_scene(scene)
+        except subprocess.CalledProcessError as e:
+            print(first(e.cmd), 'err code', e.returncode, file=sys.stderr)
+        except (FileNotFoundError, IOError) as e:
+            print(e, file=sys.stderr)
 
         Thread(target=self, daemon=True).start()
 
@@ -100,14 +124,14 @@ class MaskObj(RenderObj):
     def random_seed(self, s, seed=0xdeadbeef):
         # seeding numpy random state
         halg = hashlib.sha1()
+        print(s, end='/')
         s = 'Random seed {} with {} lights'.format(s, self.n_lights)
-        print(s, end=' ')
         halg.update(s.encode())
         s = halg.digest()
         s = reduce(operator.xor, (int.from_bytes(s[i * 4:i * 4 + 4], byteorder='little') for i in range(len(s) // 4)))
         s ^= seed
         rs = np.random.RandomState(seed=s)
-        print(s)
+        print(f'{rs.random():.4f}', end=' ')
 
         # random view angle
         rx, ry = rs.random_sample(size=2)
@@ -162,13 +186,14 @@ class MaskObj(RenderObj):
     def __call__(self, *args, **kwargs):
         try:
             im_id = conf.dblist[self.imageid]
-            print('Rendering...', self.imageid, im_id, end=' ')
+            print('rendering:', self.imageid, im_id, self.model_id, end=' ')
 
             if not self.view_mode:
                 save_dir = os.path.join(self.render_dir, im_id)
                 os.makedirs(save_dir, exist_ok=True)
+                scene = self.old_scene if self.old_scene else self.scene
                 with open(os.path.join(save_dir, 'render-CLSNAME.txt'), mode='w') as f:
-                    for idx, mesh in enumerate(self.old_scene.mesh_list):
+                    for idx, mesh in enumerate(scene.mesh_list):
                         for material in mesh.materials:
                             conf_im_id, cls_name, file_name = conf.get_cls_from_mtlname(material.name)
                             assert conf_im_id == im_id
@@ -181,8 +206,9 @@ class MaskObj(RenderObj):
                     with self.set_render_name('seed_{}'.format(i), wait=True):
                         self.swap_scene()
                         self.random_seed('{}-{}'.format(self.imageid, i))
-                    with self.set_render_name('seed_{}T'.format(i), wait=True):
-                        self.swap_scene()
+                    if self.old_scene:
+                        with self.set_render_name('seed_{}T'.format(i), wait=True):
+                            self.swap_scene()
             else:
                 self.render_ack.wait()
 
@@ -199,4 +225,4 @@ def main(idx, autogen=True):
 
 
 if __name__ == '__main__':
-    main(1000, True)
+    main(5945, True)

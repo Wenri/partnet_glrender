@@ -1,4 +1,6 @@
+import logging
 import os
+import sys
 from contextlib import contextmanager, ExitStack
 from ctypes import POINTER
 from functools import partial
@@ -42,12 +44,16 @@ class RenderObj(ShowObj):
         self.lock_list = None
         self.window = None
 
-        super().__init__(self.load_image(conf.data_dir))
+        logging.getLogger("pywavefront").addFilter(
+            lambda r: 0 if r.msg.startswith("Unimplemented OBJ format statement 's' on line ") else 1
+        )
+        super(RenderObj, self).__init__(self.load_image(conf.data_dir))
 
     def load_image(self, base_dir):
         im_id = conf.dblist[self.imageid]
         im_file = os.path.join(base_dir, "{}.obj".format(im_id))
         scene = Wavefront(im_file)
+
         for material in scene.materials.values():
             material.ambient = [0.2, 0.2, 0.2, 1.0]
         return scene
@@ -80,8 +86,11 @@ class RenderObj(ShowObj):
                 # Fall back to ambient texture if no diffuse
                 texture = material.texture or material.texture_ambient
                 if texture and material.has_uvs:
-                    bind_texture(texture)
-                    stack.callback(partial(glBindTexture, texture.image.target, 0))
+                    try:
+                        bind_texture(texture)
+                        stack.callback(partial(glBindTexture, texture.image.target, 0))
+                    except FileNotFoundError as e:
+                        print(f'Texture file missing: {e}', file=sys.stderr)
                 else:
                     glDisable(GL_TEXTURE_2D)
 
@@ -167,13 +176,13 @@ class RenderObj(ShowObj):
     def cleaning_and_switching(self):
         is_fast_switching = True
         if self.result == 1:
-            print('Switching Ahead...')
+            print('Switching Ahead...', flush=True)
             self.imageid = min(self.imageid + 1, len(conf.dblist) - 1)
         elif self.result == 2:
-            print('Switching Back...')
+            print('Switching Back...', flush=True)
             self.imageid = max(0, self.imageid - 1)
         else:
-            print('Closing...')
+            print('Closing...', flush=True)
             is_fast_switching = False
         return is_fast_switching
 

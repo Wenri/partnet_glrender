@@ -13,7 +13,7 @@ from pywavefront.wavefront import Wavefront
 from tools.cfgreader import conf
 
 
-class ShowObj:
+class ShowObj(object):
     post_event = staticmethod(glfw.post_empty_event)
 
     _BUFFER_TYPE: Final = {

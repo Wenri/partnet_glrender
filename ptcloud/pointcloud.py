@@ -1,5 +1,6 @@
 import os
 import pickle
+import subprocess
 import sys
 from types import SimpleNamespace
 
@@ -9,18 +10,18 @@ from matplotlib import pyplot
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
 
+from ptcloud.pcmatch import PCMatch, pclsimilarity, arr2pt
 from tools import blender_convert
 from tools.blender_convert import download_id
 from tools.cfgreader import conf
 from tools.matlabengine import MatEng
-from ptcloud.pcmatch import PCMatch, pclsimilarity, arr2pt
 
 blender_convert.DATA_URL = conf.partnet_url
 
 
-def cvt_obj2pcd(file, outdir, argv0='pcl_mesh_sampling', **kwargs):
+def cvt_obj2pcd(file, outdir, argv0='pcl_mesh_sampling', **kwargs) -> subprocess.CompletedProcess:
     if not os.path.exists(file):
-        return -1
+        raise FileNotFoundError(file)
     name, ext = os.path.splitext(os.path.basename(file))
     outfile = os.path.join(outdir, name + '.pcd')
     argv = [argv0, '-no_vis_result', '-write_normals']
@@ -31,24 +32,26 @@ def cvt_obj2pcd(file, outdir, argv0='pcl_mesh_sampling', **kwargs):
     argv += [file, outfile]
     if not os.path.exists(outdir):
         os.mkdir(outdir)
-    print(f'Spawn {argv0}:', ' '.join(argv))
-    return os.spawnvp(os.P_WAIT, argv0, argv)
+    return subprocess.run(argv, capture_output=True, text=True, check=True)
 
 
 def cvt_load_pcd(im_id, faceid=3, after_merging=True, n_samples=10000):
     p_dir = os.path.join(conf.pcd_dir, im_id)
-    ret = cvt_obj2pcd(os.path.join(conf.data_dir, im_id + '.obj'),
-                      p_dir, n_samples=n_samples, leaf_size=0.001)
-    assert ret == 0
+    cvt_obj2pcd(os.path.join(conf.data_dir, im_id + '.obj'), p_dir,
+                n_samples=n_samples, leaf_size=0.001)
 
     rname = f'parts_render_after_merging_0.face{faceid}'
-    ret = cvt_obj2pcd(os.path.join(conf.pix2mesh_dir, im_id, rname + '.obj'),
-                      p_dir, n_samples=n_samples, leaf_size=0.0005) if after_merging else -1
+    if after_merging:
+        try:
+            cvt_obj2pcd(os.path.join(conf.pix2mesh_dir, im_id, rname + '.obj'), p_dir,
+                        n_samples=n_samples, leaf_size=0.0005)
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            after_merging = False
 
-    if ret != 0:
+    if not after_merging:
         rname = f'parts_render_0.face{faceid}'
-        ret = cvt_obj2pcd(os.path.join(conf.pix2mesh_dir, im_id, rname + '.obj'),
-                          p_dir, n_samples=n_samples, leaf_size=0.0005)
+        cvt_obj2pcd(os.path.join(conf.pix2mesh_dir, im_id, rname + '.obj'), p_dir,
+                    n_samples=n_samples, leaf_size=0.0005)
 
     ptcloud = pcl.load(os.path.join(p_dir, im_id + '.pcd'))
     pmcloud = pcl.load(os.path.join(p_dir, rname + '.pcd'))

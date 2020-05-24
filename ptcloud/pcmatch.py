@@ -191,6 +191,7 @@ class PCMatch(object):
         trans = None
         offset = None
         pm_min = None
+        print(f'similarity:', end=' ')
         for matrix in self._ROT_MATRIX:
             self.arrays[1] = pmarray @ matrix.T
             scale, off = self.scale_match(coaxis=False)
@@ -199,8 +200,9 @@ class PCMatch(object):
                 sim_min = sim
                 pm_min = self.arrays[1]
                 trans, offset = scale @ matrix, off
-            print(f'similarity {sim=}')
+            print(f'{sim:.4f}', end=' ')
         self.arrays[1] = pm_min
+        print(f'{sim_min=:.4f}')
         return sim_min, trans, offset
 
     def register(self, n_iters=10):
