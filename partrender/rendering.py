@@ -1,3 +1,4 @@
+import gc
 import logging
 import os
 import sys
@@ -89,10 +90,13 @@ class RenderObj(ShowObj):
                     try:
                         bind_texture(texture)
                         stack.callback(partial(glBindTexture, texture.image.target, 0))
-                    except FileNotFoundError as e:
+                    except (IsADirectoryError, FileNotFoundError, IOError) as e:
                         print(f'Texture file missing: {e}', file=sys.stderr)
+                        textures_enabled = False
                 else:
-                    glDisable(GL_TEXTURE_2D)
+                    textures_enabled = False
+            if not textures_enabled:
+                glDisable(GL_TEXTURE_2D)
 
             glMaterialfv(face, GL_DIFFUSE, gl_light(material.diffuse))
             glMaterialfv(face, GL_AMBIENT, gl_light(material.ambient))
@@ -163,7 +167,7 @@ class RenderObj(ShowObj):
                 self.render_cmd.notify_all()
         with self.render_lock:
             self.free_texture()
-            if self.cleaning_and_switching():
+            if self.fast_switching():
                 glfw.set_window_should_close(window, GL_FALSE)
                 glfw.poll_events()
                 self.update_scene(self.load_image(conf.data_dir))
@@ -171,9 +175,10 @@ class RenderObj(ShowObj):
 
     def free_texture(self):
         for mtl in chain.from_iterable(mesh.materials for mesh in self.scene.mesh_list):
-            del mtl.texture
+            if mtl.texture:
+                del mtl.texture.image
 
-    def cleaning_and_switching(self):
+    def fast_switching(self):
         is_fast_switching = True
         if self.result == 1:
             print('Switching Ahead...', flush=True)
