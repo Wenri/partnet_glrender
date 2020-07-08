@@ -1,4 +1,5 @@
 import os
+import sys
 from contextlib import contextmanager
 from functools import partial
 from typing import Final
@@ -220,10 +221,12 @@ class ShowObj(object):
     @contextmanager
     def _setup_window(self):
         # Initialize the library
+        glfw.ERROR_REPORTING = 'warn'
         if not glfw.init():
             raise RuntimeError('An error occurred when calling glfw.init')
 
         glfw.window_hint(0x0002100D, 16)  # GLFW_SAMPLES
+        # glfw.window_hint(0x00022006, GL_TRUE)  # GLFW_OPENGL_FORWARD_COMPAT
         # Create a windowed mode window and its OpenGL context
         window = glfw.create_window(1280, 800, self.title, None, None)
         if not window:
