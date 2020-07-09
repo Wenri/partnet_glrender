@@ -1,5 +1,4 @@
 import os
-import sys
 from contextlib import contextmanager
 from functools import partial
 from typing import Final
@@ -19,8 +18,9 @@ class ShowObj(object):
 
     _BUFFER_TYPE: Final = {
         'GL_RGB': (GL_RGB, GLubyte, GL_UNSIGNED_BYTE, 3),
-        'GL_DEPTH_COMPONENT': (GL_DEPTH_COMPONENT, GLfloat, GL_FLOAT, 1),
-        'GL_STENCIL_INDEX': (GL_STENCIL_INDEX, GLubyte, GL_UNSIGNED_BYTE, 1)
+        'GL_DEPTH_COMPONENT': (GL_DEPTH_COMPONENT, GLfloat, GL_FLOAT, None),
+        'GL_STENCIL_INDEX': (GL_STENCIL_INDEX, GLubyte, GL_UNSIGNED_BYTE, None),
+        'GL_DEPTH_STENCIL': (GL_DEPTH_STENCIL, GLuint, GL_UNSIGNED_INT_24_8, None)
     }
 
     def __init__(self, scene: Wavefront, title='ShowObj'):
@@ -225,6 +225,10 @@ class ShowObj(object):
         if not glfw.init():
             raise RuntimeError('An error occurred when calling glfw.init')
 
+        for monitor in glfw.get_monitors():
+            print(f"'{glfw.get_monitor_name(monitor).decode()}' {glfw.get_monitor_content_scale(monitor)}", end='. ')
+        print(f"GLFW Ver {glfw.get_version_string().decode()}.")
+
         glfw.window_hint(0x0002100D, 16)  # GLFW_SAMPLES
         # glfw.window_hint(0x00022006, GL_TRUE)  # GLFW_OPENGL_FORWARD_COMPAT
         # Create a windowed mode window and its OpenGL context
@@ -240,6 +244,7 @@ class ShowObj(object):
         glfw.set_scroll_callback(window, self.scroll_fun)
         glfw.set_key_callback(window, self.key_fun)
         glfw.set_window_size_callback(window, self.window_size_fun)
+        glfw.set_window_refresh_callback(window, self._update_gl_variable)
 
         yield window
 
@@ -258,7 +263,7 @@ class ShowObj(object):
         fw, fh = glfw.get_framebuffer_size(window)
         ww, wh = glfw.get_window_size(window)
         self.scale = fw / ww
-        assert fh / wh == self.scale
+        assert fh / wh == self.scale, "Non square scale"
 
     def _main_loop(self, window):
         # Loop until the user closes the window
@@ -288,7 +293,7 @@ class ShowObj(object):
     def get_buffer(self, buf_type_str='GL_RGB'):
         x, y, width, height = self.viewport
         buf_type, buf_ctypes, buf_data_type, ch = self._BUFFER_TYPE.get(buf_type_str)
-        buf_shape = (height, width) if ch == 1 else (height, width, ch)
+        buf_shape = (height, width, ch) if ch else (height, width)
         buf = (buf_ctypes * (width * height * ch))()
         glReadPixels(x, y, width, height, buf_type, buf_data_type, buf)
         buf = np.ctypeslib.as_array(buf).reshape(buf_shape)

@@ -209,11 +209,13 @@ class MaskObj(RenderObj):
                     if self.old_scene:
                         with self.set_render_name('seed_{}T'.format(i), wait=True):
                             self.swap_scene()
+
+                print('Switching...')
+                self.set_fast_switching()
             else:
                 self.render_ack.wait()
+                print('Done.')
 
-            print('Done.')
-            self.set_fast_switching()
         except RuntimeError:
             return
 
@@ -225,4 +227,4 @@ def main(idx, autogen=True):
 
 
 if __name__ == '__main__':
-    main(5945, True)
+    main(5945, autogen=False)
