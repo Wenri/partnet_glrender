@@ -308,22 +308,26 @@ class ShowObj(object):
         print(f'Showing {partid=}')
         depth, stencil = self.get_depth_stencil()
         pos = np.where(stencil > 0)
+        depth = depth[pos].astype(np.float64)
+
         m_view, m_proj = self.get_matrix(), self.get_matrix('PROJECTION')
-        A, B = m_proj[2:, 2]
-        z_e = -B / (depth * 2 - 1 + A)
+        m_a, m_b = m_proj[2:, 2]
+        depth *= 2.0
+        depth -= 1.0
+        depth = m_b / (depth + m_a)
 
-        z_e = z_e[pos]
+        pos = np.array(pos, dtype=np.float64)
+        pos += 0.5  # half pixel tricks
+        pos *= 2.0 / np.array(stencil.shape)[:, np.newaxis]
+        pos -= 1.0
+        pos *= depth
+        pos /= np.diag(m_proj)[1::-1, np.newaxis]
 
-        pos = pos / np.array(stencil.shape)[:, np.newaxis] * 2 - 1
-        pos = -np.stack((pos[1], pos[0]), axis=0) * z_e / np.diag(m_proj)[:2, np.newaxis]
-        z_e = z_e[np.newaxis, :]
-        hmc = np.concatenate((pos, z_e, np.ones_like(z_e)), axis=0)
-        hmc = np.matmul(np.linalg.inv(m_view.T), hmc)
-        import matplotlib
-        import matplotlib.pyplot as plt
-        matplotlib.use("Qt5Agg")
-        plt.imshow(np.flipud(depth))
-        plt.show()
+        depth = depth[np.newaxis, :]
+        hmc = np.concatenate((np.flipud(pos), -depth, np.ones_like(depth)), axis=0)
+        from numpy.linalg import inv
+        hmc = np.matmul(inv(m_view.T.astype(np.float64)), hmc)
+        print(np.max(hmc, axis=1), np.min(hmc, axis=1))
 
     def get_buffer(self, buf_type_str='GL_RGB'):
         x, y, width, height = self.viewport
