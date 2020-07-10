@@ -64,8 +64,8 @@ class MaskObj(RenderObj):
         self.old_scene = None
         self.model_id = 0
 
-        self.add_key_func('T', self.swap_scene)
-        self.add_key_func('G', partial(self.swap_scene, toggle_trans=False))
+        self.act_key('T', self.swap_scene)
+        self.act_key('G', partial(self.swap_scene, toggle_trans=False))
 
     def swap_scene(self, toggle_trans=True):
         if self.old_scene:

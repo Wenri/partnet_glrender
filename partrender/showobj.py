@@ -1,4 +1,3 @@
-import os
 from contextlib import contextmanager
 from functools import partial
 from typing import Final
@@ -6,11 +5,10 @@ from typing import Final
 import glfw
 import numpy as np
 from imageio import imwrite
+from numpy.lib.stride_tricks import as_strided
 from pyglet.gl import *
 from pywavefront.visualization import draw_material, gl_light
 from pywavefront.wavefront import Wavefront
-
-from tools.cfgreader import conf
 
 
 class ShowObj(object):
@@ -20,7 +18,8 @@ class ShowObj(object):
         'GL_RGB': (GL_RGB, GLubyte, GL_UNSIGNED_BYTE, 3),
         'GL_DEPTH_COMPONENT': (GL_DEPTH_COMPONENT, GLfloat, GL_FLOAT, None),
         'GL_STENCIL_INDEX': (GL_STENCIL_INDEX, GLubyte, GL_UNSIGNED_BYTE, None),
-        'GL_DEPTH_STENCIL': (GL_DEPTH_STENCIL, GLuint, GL_UNSIGNED_INT_24_8, None)
+        'GL_DEPTH24_STENCIL8': (GL_DEPTH_STENCIL, GLuint, GL_UNSIGNED_INT_24_8, None),
+        'GL_DEPTH32F_STENCIL8': (GL_DEPTH_STENCIL, GLuint, GL_FLOAT_32_UNSIGNED_INT_24_8_REV, 2)
     }
 
     def __init__(self, scene: Wavefront, title='ShowObj'):
@@ -67,12 +66,13 @@ class ShowObj(object):
 
     def default_key_func(self):
         self.key_press_dispatcher.clear()
-        self.add_key_func('D', lambda w: self.del_set.update(self.sel_set))
-        self.add_key_func('N', partial(self.close_with_result, result=1))
-        self.add_key_func('P', partial(self.close_with_result, result=2))
-        self.add_key_func('Q', partial(glfw.set_window_should_close, value=GL_TRUE))
-        self.add_key_func('S', lambda w: imwrite('render.png', self.get_buffer()))
-        self.add_key_func('SPACE', lambda w: self.do_part(cur_idx) if (cur_idx := self.get_cur_sel_idx()) else None)
+        self.act_key('D', lambda w: self.del_set.update(self.sel_set))
+        self.act_key('N', partial(self.close_with_result, result=1))
+        self.act_key('P', partial(self.close_with_result, result=2))
+        self.act_key('Q', partial(glfw.set_window_should_close, value=GL_TRUE))
+        self.act_key('S', lambda w: imwrite('render.png', np.flipud(self.get_buffer())))
+        self.act_key('SPACE', lambda w: self.do_part(cur_idx) if (cur_idx := self.cur_sel()) is not None else print(
+            'No selection'))
 
     def add_light_source(self, *, ambient=(0.2, 0.2, 0.2, 1.0), diffuse=(1.0, 1.0, 1.0, 1.0),
                          specular=(1.0, 1.0, 1.0, 1.0), position=(0.0, 4.0, 3.0, 0.0)):
@@ -134,7 +134,7 @@ class ShowObj(object):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT)
         # glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
 
-        cur_idx = self.get_cur_sel_idx()
+        cur_idx = self.cur_sel()
         for idx, mesh in enumerate(self.scene.mesh_list):
             if idx in self.del_set:
                 continue
@@ -152,7 +152,7 @@ class ShowObj(object):
     def draw_material(self, idx, material, face=GL_FRONT_AND_BACK, lighting_enabled=True, textures_enabled=True):
         draw_material(material, face, lighting_enabled, textures_enabled)
 
-    def get_cur_sel_idx(self):
+    def cur_sel(self):
         [cur_idx] = self._cur_sel_idx
         return cur_idx - 1 if cur_idx else None
 
@@ -162,7 +162,7 @@ class ShowObj(object):
             self.cur_rot_mode = (action == 1)
             self._rot_angle_old = self.rot_angle
         elif button == 0 and action == 1:
-            cur_idx = self.get_cur_sel_idx()
+            cur_idx = self.cur_sel()
             self._selected_idx = cur_idx
             if cur_idx in self.sel_set:
                 self.sel_set.remove(cur_idx)
@@ -178,7 +178,7 @@ class ShowObj(object):
             glReadPixels(int(xpos * self.scale),
                          int(height - ypos * self.scale), 1, 1,
                          GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, self._cur_sel_idx)
-            cur_idx = self.get_cur_sel_idx()
+            cur_idx = self.cur_sel()
             if self._selected_idx != cur_idx:
                 self._selected_idx = None
 
@@ -190,9 +190,18 @@ class ShowObj(object):
             if func := self.key_press_dispatcher.get(key):
                 func(window)
 
-    def add_key_func(self, key_str, func):
+    def act_key(self, key_str, func):
         key = getattr(glfw, f'KEY_{key_str}')
+        if key in self.key_press_dispatcher:
+            raise RuntimeError(f'Duplicate key {key_str}')
         self.key_press_dispatcher[key] = func
+
+    def register_key_func(self, key_str):
+        def _wrapper(func):
+            self.act_key(key_str=key_str, func=func)
+            return func
+
+        return _wrapper
 
     def window_size_fun(self, window, width, height):
         glViewport(0, 0, int(width * self.scale), int(height * self.scale))
@@ -288,32 +297,36 @@ class ShowObj(object):
         assert self.result <= 0, 'NOT POSSIBLE'
 
     def do_part(self, partid):
-        pass
+        print(f'Showing {partid=}')
+        depth, stencil = self.get_depth_stencil()
+        import matplotlib
+        import matplotlib.pyplot as plt
+        matplotlib.use("Qt5Agg")
+        plt.imshow(np.flipud(depth))
+        plt.show()
 
     def get_buffer(self, buf_type_str='GL_RGB'):
         x, y, width, height = self.viewport
         buf_type, buf_ctypes, buf_data_type, ch = self._BUFFER_TYPE.get(buf_type_str)
-        buf_shape = (height, width, ch) if ch else (height, width)
         buf = (buf_ctypes * (width * height * ch))()
         glReadPixels(x, y, width, height, buf_type, buf_data_type, buf)
-        buf = np.ctypeslib.as_array(buf).reshape(buf_shape)
-        return np.flip(buf, axis=0)
+        buf = np.ctypeslib.as_array(buf)
+        buf.shape = (height, width, ch) if ch else (height, width)
+        return buf
+
+    def get_depth_stencil(self):
+        stencil = self.get_buffer('GL_DEPTH32F_STENCIL8')
+        depth = np.frombuffer(stencil.data, np.float32).reshape(stencil.shape)[:, :, 0]
+        stencil = as_strided(np.frombuffer(stencil.data, np.uint8, offset=4), depth.shape, depth.strides)
+        return depth, stencil
 
 
-def main(idx):
-    while True:
-        im_id = conf.dblist[idx]
-        im_file = os.path.join(conf.data_dir, "{}.obj".format(im_id))
-        scene = Wavefront(im_file)
-        show = ShowObj(scene)
-        show.show_obj()
-        if show.result == 1:
-            idx = min(idx + 1, len(conf.dblist) - 1)
-        elif show.result == 2:
-            idx = max(0, idx - 1)
-        else:
-            break
+def main(im_file):
+    scene = Wavefront(im_file)
+    show = ShowObj(scene)
+    show.show_obj()
+    print(f'{show.result=}')
 
 
 if __name__ == '__main__':
-    main(0)
+    main('/Volumes/gbcdisk/research/box.obj')

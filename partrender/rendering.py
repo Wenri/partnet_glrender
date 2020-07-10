@@ -1,4 +1,3 @@
-import gc
 import logging
 import os
 import sys
@@ -49,6 +48,7 @@ class RenderObj(ShowObj):
             lambda r: 0 if r.msg.startswith("Unimplemented OBJ format statement 's' on line ") else 1
         )
         super(RenderObj, self).__init__(self.load_image(conf.data_dir))
+        self.act_key('R', lambda w: self.save_buffer())
 
     def load_image(self, base_dir):
         im_id = conf.dblist[self.imageid]
@@ -207,15 +207,16 @@ class RenderObj(ShowObj):
                     self.render_ack.set()
                     self.render_name = None
 
-    def save_buffer(self, im_name):
-        img, depth, stencil = map(self.get_buffer, ('GL_RGB', 'GL_DEPTH_COMPONENT', 'GL_STENCIL_INDEX'))
+    def save_buffer(self, im_name='render'):
+        img = self.get_buffer()
+        depth, stencil = self.get_depth_stencil()
         im_id = conf.dblist[self.imageid]
         file_path = os.path.join(self.render_dir, im_id)
         if not os.path.exists(file_path):
             os.mkdir(file_path)
-        imwrite(os.path.join(file_path, f'{im_name}-RGB.png'), img)
-        savemat(os.path.join(file_path, f'{im_name}-DEPTH.mat'), {'depth': depth}, do_compression=True)
-        imwrite(os.path.join(file_path, f'{im_name}-STENCIL.png'), stencil)
+        imwrite(os.path.join(file_path, f'{im_name}-RGB.png'), np.flipud(img))
+        savemat(os.path.join(file_path, f'{im_name}-DEPTH.mat'), {'depth': np.flipud(depth)}, do_compression=True)
+        imwrite(os.path.join(file_path, f'{im_name}-STENCIL.png'), np.flipud(stencil))
 
 
 def main(idx, autogen=False):
