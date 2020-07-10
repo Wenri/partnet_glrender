@@ -306,12 +306,16 @@ class ShowObj(object):
 
     def do_part(self, partid):
         print(f'Showing {partid=}')
+        hmc = self.part_pointcloud(partid)
+        print(np.max(hmc, axis=1), np.min(hmc, axis=1))
+
+    def part_pointcloud(self, partid):
         depth, stencil = self.get_depth_stencil()
-        pos = np.where(stencil > 0)
+        pos = np.where(stencil - 1 == partid)
         depth = depth[pos].astype(np.float64)
 
-        m_view, m_proj = self.get_matrix(), self.get_matrix('PROJECTION')
-        m_a, m_b = m_proj[2:, 2]
+        m_trans = self.get_matrix('PROJECTION')
+        m_a, m_b = m_trans[2:, 2]
         depth *= 2.0
         depth -= 1.0
         depth = m_b / (depth + m_a)
@@ -321,13 +325,14 @@ class ShowObj(object):
         pos *= 2.0 / np.array(stencil.shape)[:, np.newaxis]
         pos -= 1.0
         pos *= depth
-        pos /= np.diag(m_proj)[1::-1, np.newaxis]
+        pos /= np.diag(m_trans)[1::-1, np.newaxis]
 
-        depth = depth[np.newaxis, :]
-        hmc = np.concatenate((np.flipud(pos), -depth, np.ones_like(depth)), axis=0)
         from numpy.linalg import inv
-        hmc = np.matmul(inv(m_view.T.astype(np.float64)), hmc)
-        print(np.max(hmc, axis=1), np.min(hmc, axis=1))
+        m_trans = self.get_matrix()
+        depth = depth[np.newaxis, :]
+        xyz = np.concatenate((np.flipud(pos), -depth, np.ones_like(depth)), axis=0)
+        xyz = np.matmul(inv(m_trans.T.astype(np.float64)), xyz)
+        return xyz
 
     def get_buffer(self, buf_type_str='GL_RGB'):
         x, y, width, height = self.viewport
