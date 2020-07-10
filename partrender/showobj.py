@@ -5,7 +5,6 @@ from typing import Final
 import glfw
 import numpy as np
 from imageio import imwrite
-from numpy.lib.stride_tricks import as_strided
 from pyglet.gl import *
 from pywavefront.visualization import draw_material, gl_light
 from pywavefront.wavefront import Wavefront
@@ -91,7 +90,7 @@ class ShowObj(object):
         glLoadIdentity()
         glGetIntegerv(GL_VIEWPORT, self.viewport)
         x, y, width, height = self.viewport
-        gluPerspective(45.0, width / height, 1, 10.0)
+        gluPerspective(45.0, width / height, 1.0, 5.0)
 
     def viewpoint(self):
         glMatrixMode(GL_MODELVIEW)
@@ -227,6 +226,15 @@ class ShowObj(object):
         self.result = result
         glfw.set_window_should_close(window, GL_TRUE)
 
+    @staticmethod
+    def _hint_gl_version(version=(2, 1)):  # macOS supported version: 2.1, 3.2, 4.1
+        glfw.window_hint(0x0002100D, 16)  # GLFW_SAMPLES
+        glfw.window_hint(0x00022002, version[0])  # GLFW_CONTEXT_VERSION_MAJOR
+        glfw.window_hint(0x00022003, version[1])  # GLFW_CONTEXT_VERSION_MINOR
+        if version[0] > 2:
+            glfw.window_hint(0x00022006, GL_TRUE)  # GLFW_OPENGL_FORWARD_COMPAT
+            glfw.window_hint(0x00022008, 0x00032001)  # GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE
+
     @contextmanager
     def _setup_window(self):
         # Initialize the library
@@ -238,8 +246,8 @@ class ShowObj(object):
             print(f"'{glfw.get_monitor_name(monitor).decode()}' {glfw.get_monitor_content_scale(monitor)}", end='. ')
         print(f"GLFW Ver {glfw.get_version_string().decode()}.")
 
-        glfw.window_hint(0x0002100D, 16)  # GLFW_SAMPLES
-        # glfw.window_hint(0x00022006, GL_TRUE)  # GLFW_OPENGL_FORWARD_COMPAT
+        self._hint_gl_version()
+
         # Create a windowed mode window and its OpenGL context
         window = glfw.create_window(1280, 800, self.title, None, None)
         if not window:
@@ -299,6 +307,18 @@ class ShowObj(object):
     def do_part(self, partid):
         print(f'Showing {partid=}')
         depth, stencil = self.get_depth_stencil()
+        pos = np.where(stencil > 0)
+        m_view, m_proj = self.get_matrix(), self.get_matrix('PROJECTION')
+        A, B = m_proj[2:, 2]
+        z_e = -B / (depth * 2 - 1 + A)
+
+        z_e = z_e[pos]
+
+        pos = pos / np.array(stencil.shape)[:, np.newaxis] * 2 - 1
+        pos = -np.stack((pos[1], pos[0]), axis=0) * z_e / np.diag(m_proj)[:2, np.newaxis]
+        z_e = z_e[np.newaxis, :]
+        hmc = np.concatenate((pos, z_e, np.ones_like(z_e)), axis=0)
+        hmc = np.matmul(np.linalg.inv(m_view.T), hmc)
         import matplotlib
         import matplotlib.pyplot as plt
         matplotlib.use("Qt5Agg")
@@ -315,10 +335,20 @@ class ShowObj(object):
         return buf
 
     def get_depth_stencil(self):
+        import numpy.lib.stride_tricks as tricks
         stencil = self.get_buffer('GL_DEPTH32F_STENCIL8')
         depth = np.frombuffer(stencil.data, np.float32).reshape(stencil.shape)[:, :, 0]
-        stencil = as_strided(np.frombuffer(stencil.data, np.uint8, offset=4), depth.shape, depth.strides)
+        stencil = tricks.as_strided(np.frombuffer(stencil.data, np.uint8, offset=4), depth.shape, depth.strides)
         return depth, stencil
+
+    def get_matrix(self, matrix_type_str='MODELVIEW'):
+        import pyglet.gl
+        buf = (GLfloat * 16)()
+        matrix_type = getattr(pyglet.gl, f'GL_{matrix_type_str}_MATRIX')
+        glGetFloatv(matrix_type, buf)
+        buf = np.ctypeslib.as_array(buf)
+        buf.shape = (4, 4)
+        return buf
 
 
 def main(im_file):
