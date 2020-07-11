@@ -10,6 +10,16 @@ from pywavefront.visualization import draw_material, gl_light
 from pywavefront.wavefront import Wavefront
 
 
+def get_gl_matrix(matrix_type_str='MODELVIEW'):
+    import pyglet.gl
+    buf = (GLdouble * 16)()
+    matrix_type = getattr(pyglet.gl, f'GL_{matrix_type_str}_MATRIX')
+    glGetDoublev(matrix_type, buf)
+    buf = np.ctypeslib.as_array(buf)
+    buf.shape = (4, 4)
+    return buf
+
+
 class ShowObj(object):
     post_event = staticmethod(glfw.post_empty_event)
 
@@ -304,34 +314,45 @@ class ShowObj(object):
 
         assert self.result <= 0, 'NOT POSSIBLE'
 
-    def do_part(self, partid):
-        print(f'Showing {partid=}')
-        hmc = self.part_pointcloud(partid)
+    def do_part(self, part_id):
+        """
+        Action on selected part
+        :type part_id: int
+        :param part_id:
+        :return: None
+        """
+        print(f'Showing {part_id=}')
+        hmc = self.part_pointcloud(part_id)
         print(np.max(hmc, axis=1), np.min(hmc, axis=1))
 
-    def part_pointcloud(self, partid):
+    def part_pointcloud(self, part_id):
+        """
+        only support Perspective Projection
+        :type part_id: int
+        :param part_id: part id for stencil test
+        :return: xyz coordinates in world for rendered points
+        """
         depth, stencil = self.get_depth_stencil()
-        pos = np.where(stencil - 1 == partid)
+        pos = np.nonzero(stencil == part_id + 1)
         depth = depth[pos].astype(np.float64)
 
-        m_trans = self.get_matrix('PROJECTION')
-        m_a, m_b = m_trans[2:, 2]
+        m_trans = get_gl_matrix('PROJECTION')
+        m_a, m_b = m_trans[2:, 2]  # A, B in Projection Matrix
         depth *= 2.0
-        depth -= 1.0
-        depth = m_b / (depth + m_a)
+        depth -= 1.0  # Inverse viewport transform
+        depth = m_b / (depth + m_a)  # Reverse projection transform
 
         pos = np.array(pos, dtype=np.float64)
-        pos += 0.5  # half pixel tricks
+        pos += 0.5  # Half pixel tricks
         pos *= 2.0 / np.array(stencil.shape)[:, np.newaxis]
-        pos -= 1.0
-        pos *= depth
+        pos -= 1.0  # Inverse viewport transform
+        pos *= depth  # Normalized Device Coordinates (NDC) to Clip Coordinates
         pos /= np.diag(m_trans)[1::-1, np.newaxis]
 
-        from numpy.linalg import inv
-        m_trans = self.get_matrix()
+        m_trans = get_gl_matrix('MODELVIEW')
         depth = depth[np.newaxis, :]
         xyz = np.concatenate((np.flipud(pos), -depth, np.ones_like(depth)), axis=0)
-        xyz = np.matmul(inv(m_trans.T.astype(np.float64)), xyz)
+        xyz = np.linalg.solve(m_trans.T.astype(np.float64), xyz)  # Inverse modelview transform
         return xyz
 
     def get_buffer(self, buf_type_str='GL_RGB'):
@@ -349,15 +370,6 @@ class ShowObj(object):
         depth = np.frombuffer(stencil.data, np.float32).reshape(stencil.shape)[:, :, 0]
         stencil = tricks.as_strided(np.frombuffer(stencil.data, np.uint8, offset=4), depth.shape, depth.strides)
         return depth, stencil
-
-    def get_matrix(self, matrix_type_str='MODELVIEW'):
-        import pyglet.gl
-        buf = (GLfloat * 16)()
-        matrix_type = getattr(pyglet.gl, f'GL_{matrix_type_str}_MATRIX')
-        glGetFloatv(matrix_type, buf)
-        buf = np.ctypeslib.as_array(buf)
-        buf.shape = (4, 4)
-        return buf
 
 
 def main(im_file):

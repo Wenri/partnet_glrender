@@ -142,8 +142,8 @@ class GroupObj(RenderObj):
         self.rot_angle[1] = 0
         print("total_area {} projected_area {}".format(area, parea), vv)
 
-    def do_part(self, partid):
-        mesh = self.scene.mesh_list[partid]
+    def do_part(self, part_id):
+        mesh = self.scene.mesh_list[part_id]
         mtl, = mesh.materials
         mtl_im_id, cls_name, file_name = conf.get_cls_from_mtlname(mtl.name)
         file_name, _ = os.path.splitext(file_name)
