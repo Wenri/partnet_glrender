@@ -347,12 +347,11 @@ class ShowObj(object):
         pos *= 2.0 / np.array(stencil.shape)[:, np.newaxis]
         pos -= 1.0  # Inverse viewport transform
         pos *= depth  # Normalized Device Coordinates (NDC) to Clip Coordinates
-        pos /= np.diag(m_trans)[1::-1, np.newaxis]
 
-        m_trans = get_gl_matrix('MODELVIEW')
         depth = depth[np.newaxis, :]
-        xyz = np.concatenate((np.flipud(pos), -depth, np.ones_like(depth)), axis=0)
-        xyz = np.linalg.solve(m_trans.T.astype(np.float64), xyz)  # Inverse modelview transform
+        xyz = np.concatenate((np.flipud(pos), m_b - m_a * depth, depth), axis=0)
+        m_trans = np.matmul(get_gl_matrix('MODELVIEW'), m_trans)  # get combined transform matrix
+        xyz = np.linalg.solve(m_trans.T.astype(np.float64), xyz)  # Inverse transform
         return xyz
 
     def get_buffer(self, buf_type_str='GL_RGB'):
