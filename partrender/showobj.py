@@ -337,19 +337,21 @@ class ShowObj(object):
         depth = depth[pos].astype(np.float64)
 
         m_trans = get_gl_matrix('PROJECTION')
+        assert np.allclose(m_trans[:2, 2:], 0) and np.allclose(m_trans[2:, -1], [-1.0, 0.0])
+
         m_a, m_b = m_trans[2:, 2]  # A, B in Projection Matrix
         depth *= 2.0
         depth -= 1.0  # Inverse viewport transform
-        depth = m_b / (depth + m_a)  # Reverse projection transform
+        neg_z = m_b / (depth + m_a)  # Reverse projection transform
 
         pos = np.array(pos, dtype=np.float64)
         pos += 0.5  # Half pixel tricks
         pos *= 2.0 / np.array(stencil.shape)[:, np.newaxis]
         pos -= 1.0  # Inverse viewport transform
-        pos *= depth  # Normalized Device Coordinates (NDC) to Clip Coordinates
+        pos *= neg_z  # Normalized Device Coordinates (NDC) to Clip Coordinates
+        depth *= neg_z  # Normalized Device Coordinates (NDC) to Clip Coordinates
 
-        depth = depth[np.newaxis, :]
-        xyz = np.concatenate((np.flipud(pos), m_b - m_a * depth, depth), axis=0)
+        xyz = np.concatenate((np.flipud(pos), depth[np.newaxis, :], neg_z[np.newaxis, :]), axis=0)
         m_trans = np.matmul(get_gl_matrix('MODELVIEW'), m_trans)  # get combined transform matrix
         xyz = np.linalg.solve(m_trans.T.astype(np.float64), xyz)  # Inverse transform
         return xyz
