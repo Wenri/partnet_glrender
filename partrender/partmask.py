@@ -55,12 +55,13 @@ def yuv2rgb(yuv):
 
 
 class MaskObj(RenderObj):
-    def __init__(self, start_id, auto_generate=False):
+    def __init__(self, start_id, auto_generate=False, load_shapenet=True):
         super(MaskObj, self).__init__(start_id, not auto_generate, conf.partmask_dir)
         self.n_lights = 8
         self.n_samples = 10
         self.matched_matrix = None
         self.should_apply_trans = False
+        self.should_load_shapenet = load_shapenet
         self.old_scene = None
         self.model_id = 0
 
@@ -104,14 +105,17 @@ class MaskObj(RenderObj):
 
     def window_load(self, window):
         super(MaskObj, self).window_load(window)
-        try:
-            scene = self.load_shapenet()
-            self.calc_apply_matched_matrix()
-            self.old_scene = self.update_scene(scene)
-        except subprocess.CalledProcessError as e:
-            print(first(e.cmd), 'err code', e.returncode, file=sys.stderr)
-        except (FileNotFoundError, IOError) as e:
-            print(e, file=sys.stderr)
+
+        self.old_scene = None
+        if self.should_load_shapenet:
+            try:
+                scene = self.load_shapenet()
+                self.calc_apply_matched_matrix()
+                self.old_scene = self.update_scene(scene)
+            except subprocess.CalledProcessError as e:
+                print(first(e.cmd), 'err code', e.returncode, file=sys.stderr)
+            except (FileNotFoundError, IOError) as e:
+                print(e, file=sys.stderr)
 
         Thread(target=self, daemon=True).start()
 
@@ -222,9 +226,9 @@ class MaskObj(RenderObj):
 
 def main(idx, autogen=True):
     faulthandler.enable()
-    show = MaskObj(idx, autogen)
+    show = MaskObj(idx, autogen, load_shapenet=False)
     show.show_obj()
 
 
 if __name__ == '__main__':
-    main(5945, autogen=False)
+    main(0, autogen=True)

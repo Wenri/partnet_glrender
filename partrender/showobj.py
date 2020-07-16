@@ -325,16 +325,25 @@ class ShowObj(object):
         hmc = self.part_pointcloud(part_id)
         print(np.max(hmc, axis=1), np.min(hmc, axis=1))
 
-    def part_pointcloud(self, part_id):
+    def part_pointcloud(self, part_id=-1, depth=None, stencil=None):
         """
         only support Perspective Projection
         :type part_id: int
         :param part_id: part id for stencil test
+        :param depth: optional depth buffer
+        :param stencil: optional stencil buffer
         :return: xyz coordinates in world for rendered points
         """
-        depth, stencil = self.get_depth_stencil()
-        pos = np.nonzero(stencil == part_id + 1)
+        if depth is None:
+            depth, stencil = self.get_depth_stencil()
+
+        if part_id < 0:
+            pos = np.nonzero(stencil)
+        else:
+            pos = np.nonzero(stencil == part_id + 1)
+
         depth = depth[pos].astype(np.float64)
+        label = stencil[pos]
 
         m_trans = get_gl_matrix('PROJECTION')
         assert np.allclose(m_trans[:2, 2:], 0) and np.allclose(m_trans[2:, -1], [-1.0, 0.0])
@@ -354,7 +363,7 @@ class ShowObj(object):
         xyz = np.concatenate((np.flipud(pos), depth[np.newaxis, :], neg_z[np.newaxis, :]), axis=0)
         m_trans = np.matmul(get_gl_matrix('MODELVIEW'), m_trans)  # get combined transform matrix
         xyz = np.linalg.solve(m_trans.T.astype(np.float64), xyz)  # Inverse transform
-        return xyz
+        return xyz, label
 
     def get_buffer(self, buf_type_str='GL_RGB'):
         x, y, width, height = self.viewport

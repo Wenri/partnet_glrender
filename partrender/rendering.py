@@ -210,12 +210,14 @@ class RenderObj(ShowObj):
     def save_buffer(self, im_name='render'):
         img = self.get_buffer()
         depth, stencil = self.get_depth_stencil()
+        xyz, label = self.part_pointcloud(depth=depth, stencil=stencil)
         im_id = conf.dblist[self.imageid]
         file_path = os.path.join(self.render_dir, im_id)
         if not os.path.exists(file_path):
             os.mkdir(file_path)
         imwrite(os.path.join(file_path, f'{im_name}-RGB.png'), np.flipud(img))
-        savemat(os.path.join(file_path, f'{im_name}-DEPTH.mat'), {'depth': np.flipud(depth)}, do_compression=True)
+        savemat(os.path.join(file_path, f'{im_name}-DEPTH.mat'),
+                {'depth': np.flipud(depth), 'xyz': xyz, 'label': label}, do_compression=True)
         imwrite(os.path.join(file_path, f'{im_name}-STENCIL.png'), np.flipud(stencil))
 
 

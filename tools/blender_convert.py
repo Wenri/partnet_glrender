@@ -98,7 +98,8 @@ class ShapenetFileHelper:
         model_id, model_cat = itemgetter('model_id', 'model_cat')(load_json(obj_id).meta)
         for db_id in range(len(self.shapenet_dir)):
             for synset_id in chain.from_iterable(self._get_synset_id_set(db_id, model_cat)):
-                if os.path.exists(synset_path := os.path.join(self.shapenet_dir[db_id], synset_id, model_id)):
+                synset_path = os.path.join(self.shapenet_dir[db_id], synset_id, model_id)
+                if os.path.exists(synset_path):
                     yield synset_path
 
     def __call__(self, obj_id, all_db=False):
