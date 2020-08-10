@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from collections import defaultdict
 from contextlib import ExitStack
 from functools import reduce, partial
 from itertools import chain
@@ -22,6 +23,7 @@ from partrender.rendering import RenderObj
 from ptcloud.pcmatch import PCMatch
 from ptcloud.pointcloud import cvt_obj2pcd
 from tools.blender_convert import ShapenetFileHelper
+from tools.blender_convert import load_obj_files, load_json
 from tools.cfgreader import conf
 
 
@@ -64,6 +66,7 @@ class MaskObj(RenderObj):
         self.should_load_shapenet = load_shapenet
         self.old_scene = None
         self.model_id = 0
+        self.obj_ins_map = None
 
         self.act_key('T', self.swap_scene)
         self.act_key('G', partial(self.swap_scene, toggle_trans=False))
@@ -116,6 +119,7 @@ class MaskObj(RenderObj):
                 print(first(e.cmd), 'err code', e.returncode, file=sys.stderr)
             except (FileNotFoundError, IOError) as e:
                 print(e, file=sys.stderr)
+        self.collect_instance_id()
 
         Thread(target=self, daemon=True).start()
 
@@ -187,6 +191,32 @@ class MaskObj(RenderObj):
             for m in mesh.materials:
                 change_mtl(i, m)
 
+    def convert_mesh(self, mesh_list):
+        with tempfile.TemporaryDirectory() as d:
+            filename = os.path.join(d, conf.dblist[self.imageid] + '.obj')
+            with open(filename, mode='w') as f:
+                print("# OBJ file", file=f)
+                for v in self.scene.vertices:
+                    print("v %.4f %.4f %.4f" % v[:], file=f)
+                for m in mesh_list:
+                    for p in m.faces:
+                        print("f %d %d %d" % tuple(i + 1 for i in p), file=f)
+            return np.array(self.load_pcd(d, leaf_size=0.001))
+
+    def collect_instance_id(self):
+        meta = load_json(conf.dblist[self.imageid])
+
+        rlookup = {os.path.splitext(mesh.name)[0]: idx + 1 for idx, mesh in enumerate(self.scene.mesh_list)}
+        self.obj_ins_map = defaultdict(list)
+        for ins_path, cls_name, obj in load_obj_files(meta):
+            obj_name = os.path.splitext(os.path.basename(obj))[0]
+            try:
+                ins_id = conf.trim_ins_path(ins_path.split('/'), cls_name)
+                self.obj_ins_map[ins_id].append(rlookup[obj_name])
+            except ValueError as e:
+                print('Skipping {} due to {}'.format(obj_name, e), file=sys.stderr)
+                self.del_set.add(rlookup[obj_name] - 1)
+
     def __call__(self, *args, **kwargs):
         try:
             im_id = conf.dblist[self.imageid]
@@ -205,7 +235,13 @@ class MaskObj(RenderObj):
                             mesh_name, _ = os.path.splitext(mesh.name)
                             assert conf_mesh_name == mesh_name
                             print(conf_im_id, idx, cls_name, file_name, file=f)
-
+                ins_list = list(self.obj_ins_map.items())
+                with open(os.path.join(save_dir, 'render-INSNAME.txt'), mode='w') as f:
+                    for ins_path, meshes in ins_list:
+                        print(ins_path, ','.join(map(str, meshes)), file=f)
+                ins_pc = [self.convert_mesh([self.scene.mesh_list[idx - 1] for idx in meshes])
+                          for _, meshes in ins_list]
+                np.save(os.path.join(save_dir, 'render-INS_PC.npy'), ins_pc)
                 for i in range(self.n_samples):
                     with self.set_render_name('seed_{}'.format(i), wait=True):
                         self.swap_scene()

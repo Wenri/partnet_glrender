@@ -72,5 +72,17 @@ class DBReader(SimpleNamespace):
             cls_name = cls_name[:strindex]
         return cls_name
 
+    def trim_ins_path(self, ins_path, cls_name):
+        while cls_name:
+            if cls_name in self.groupset:
+                return '/'.join(ins_path)
+            ins_path.pop()
+            strindex = cls_name.rfind('/')
+            if strindex > 0:
+                cls_name = cls_name[:strindex]
+            else:
+                raise ValueError(cls_name)
+        raise ValueError()
+
 
 conf = DBReader('config.cfg')

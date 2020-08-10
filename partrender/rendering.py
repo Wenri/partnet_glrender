@@ -1,7 +1,7 @@
 import logging
 import os
 import sys
-from contextlib import contextmanager, ExitStack
+from contextlib import contextmanager, ExitStack, suppress
 from ctypes import POINTER
 from functools import partial
 from itertools import chain
@@ -14,7 +14,6 @@ from imageio import imwrite
 from pyglet.gl import *
 from pywavefront import Wavefront
 from pywavefront.visualization import gl_light, bind_texture
-from scipy.io import savemat
 
 from partrender.showobj import ShowObj
 from tools.cfgreader import conf
@@ -53,7 +52,7 @@ class RenderObj(ShowObj):
     def load_image(self, base_dir):
         im_id = conf.dblist[self.imageid]
         im_file = os.path.join(base_dir, "{}.obj".format(im_id))
-        scene = Wavefront(im_file)
+        scene = Wavefront(im_file, collect_faces=True)
 
         for material in scene.materials.values():
             material.ambient = [0.2, 0.2, 0.2, 1.0]
@@ -211,13 +210,16 @@ class RenderObj(ShowObj):
         img = self.get_buffer()
         depth, stencil = self.get_depth_stencil()
         xyz, label = self.part_pointcloud(depth=depth, stencil=stencil)
+        perm = np.random.permutation(label.size)
         im_id = conf.dblist[self.imageid]
         file_path = os.path.join(self.render_dir, im_id)
-        if not os.path.exists(file_path):
+        with suppress(FileExistsError):
             os.mkdir(file_path)
         imwrite(os.path.join(file_path, f'{im_name}-RGB.png'), np.flipud(img))
-        savemat(os.path.join(file_path, f'{im_name}-DEPTH.mat'),
-                {'depth': np.flipud(depth), 'xyz': xyz, 'label': label}, do_compression=True)
+        np.save(os.path.join(file_path, f'{im_name}-DEPTH.npy'), np.flipud(depth))
+        np.save(os.path.join(file_path, f'{im_name}-XYZ.npy'), xyz[perm].astype(np.float32))
+        np.save(os.path.join(file_path, f'{im_name}-LABEL.npy'),
+                np.stack([label[perm].astype(np.int32), perm.astype(np.int32)], axis=0))
         imwrite(os.path.join(file_path, f'{im_name}-STENCIL.png'), np.flipud(stencil))
 
 

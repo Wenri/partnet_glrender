@@ -363,7 +363,7 @@ class ShowObj(object):
         xyz = np.concatenate((np.flipud(pos), depth[np.newaxis, :], neg_z[np.newaxis, :]), axis=0)
         m_trans = np.matmul(get_gl_matrix('MODELVIEW'), m_trans)  # get combined transform matrix
         xyz = np.linalg.solve(m_trans.T.astype(np.float64), xyz)  # Inverse transform
-        return xyz, label
+        return xyz.T, label
 
     def get_buffer(self, buf_type_str='GL_RGB'):
         x, y, width, height = self.viewport
