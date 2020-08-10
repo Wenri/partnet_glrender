@@ -58,6 +58,11 @@ class DBReader(SimpleNamespace):
 
         return self._groupset
 
+    def save_groupset(self, filename):
+        with open(filename, mode='w') as f:
+            for cls_name in self.groupset:
+                print(cls_name, file=f)
+
     def get_cls_from_mtlname(self, name: str):
         prefix, ext = os.path.splitext(name)
         assert prefix == 'Default_OBJ'

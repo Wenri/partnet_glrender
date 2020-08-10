@@ -71,6 +71,9 @@ class MaskObj(RenderObj):
         self.act_key('T', self.swap_scene)
         self.act_key('G', partial(self.swap_scene, toggle_trans=False))
 
+        if auto_generate:
+            conf.save_groupset(os.path.join(conf.partmask_dir, 'grouping.txt'))
+
     def swap_scene(self, toggle_trans=True):
         if self.old_scene:
             self.old_scene = self.update_scene(self.old_scene)
