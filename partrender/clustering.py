@@ -2,6 +2,7 @@ import operator
 import os
 import time
 from collections import defaultdict
+from contextlib import nullcontext
 from threading import Thread
 
 import numpy as np
@@ -13,7 +14,6 @@ from sklearn.cluster import k_means
 from sklearn.manifold import spectral_embedding
 from sklearn.metrics.pairwise import cosine_similarity
 
-from partrender.rendering import RenderObj
 from tools.cfgreader import conf
 
 CLUSTER_DIM = 3
@@ -106,14 +106,14 @@ def save_cluster_dict(*args, im_id: str, cls_name: str, **kwargs):
 
 
 class BkThread(Thread):
-    def __init__(self, mesh_list, lock_list, callback=None):
+    def __init__(self, im_id, mesh_list, lock_list=None, callback=None):
         self.grp_dict = defaultdict(list)
         self.mesh_list = mesh_list
         self.lock_list = lock_list
         self.result_list = [None] * len(mesh_list)
         self.can_exit = False
         self.callback = callback
-        self.im_id = None
+        self.im_id = im_id
         self.add_to_dict()
         super().__init__(daemon=True)
 
@@ -122,7 +122,8 @@ class BkThread(Thread):
         n_vtx, _ = a.shape
         assert n_vtx == len(labels)
 
-        with self.lock_list[idx]:
+        lock = self.lock_list[idx] if self.lock_list else nullcontext()
+        with lock:
             color = np.zeros(shape=(n_vtx, 4), dtype=np.float32)
             for lbl, arr in zip(labels, color):
                 if lbl >= 0:
@@ -138,11 +139,8 @@ class BkThread(Thread):
         for idx, mesh in enumerate(self.mesh_list):
             print('analysis mesh: %s' % mesh.name)
             mtl, = mesh.materials
-            mtl_im_id, cls_name, file_name = conf.get_cls_from_mtlname(mtl.name)
-            if self.im_id:
-                assert mtl_im_id == self.im_id
-            else:
-                self.im_id = mtl_im_id
+            mtl_im_id, cls_name, file_name = conf.get_cls_from_mtlname(self.im_id, mtl.name)
+            assert mtl_im_id == self.im_id
             file_name, _ = os.path.splitext(file_name)
             mesh_name, _ = os.path.splitext(mesh.name)
             assert mesh_name == file_name
@@ -192,7 +190,7 @@ def main(nskip):
         im_id = dblist[idx]
         im_file = os.path.join(conf.data_dir, "{}.obj".format(im_id))
         scene = Wavefront(im_file)
-        bkt = BkThread(scene.mesh_list)
+        bkt = BkThread(im_id, scene.mesh_list)
         bkt.start()
         idx = max(idx - 1, 0)
         bkt.join()

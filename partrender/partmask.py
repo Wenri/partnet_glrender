@@ -232,7 +232,7 @@ class MaskObj(RenderObj):
                 with open(os.path.join(save_dir, 'render-CLSNAME.txt'), mode='w') as f:
                     for idx, mesh in enumerate(scene.mesh_list):
                         for material in mesh.materials:
-                            conf_im_id, cls_name, file_name = conf.get_cls_from_mtlname(material.name)
+                            conf_im_id, cls_name, file_name = conf.get_cls_from_mtlname(im_id, material.name)
                             assert conf_im_id == im_id
                             conf_mesh_name, _ = os.path.splitext(file_name)
                             mesh_name, _ = os.path.splitext(mesh.name)

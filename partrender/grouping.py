@@ -87,9 +87,10 @@ class GroupObj(RenderObj):
         self.cluster_norm = dict()
         super(GroupObj, self).__init__(start_id, not auto_generate)
 
-    def load_image(self):
-        scene = super(GroupObj, self).load_image()
-        self.bkt = BkThread(scene.mesh_list, self.lock_list, self)
+    def load_image(self, base_dir):
+        scene = super(GroupObj, self).load_image(base_dir)
+        im_id = conf.dblist[self.imageid]
+        self.bkt = BkThread(im_id, scene.mesh_list, self.lock_list, self)
         return scene
 
     def __call__(self, cls_name: str, *args, **kwargs):
@@ -145,9 +146,11 @@ class GroupObj(RenderObj):
     def do_part(self, part_id):
         mesh = self.scene.mesh_list[part_id]
         mtl, = mesh.materials
-        mtl_im_id, cls_name, file_name = conf.get_cls_from_mtlname(mtl.name)
+        im_id = conf.dblist[self.imageid]
+        mtl_im_id, cls_name, file_name = conf.get_cls_from_mtlname(im_id, mtl.name)
         file_name, _ = os.path.splitext(file_name)
         mesh_name, _ = os.path.splitext(mesh.name)
+        assert im_id == mtl_im_id
         assert file_name == mesh_name
         print("{}({})".format(file_name, cls_name), end=' ')
 
