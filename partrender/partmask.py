@@ -23,6 +23,24 @@ from tools.blender_convert import load_obj_files, load_json
 from tools.cfgreader import conf
 
 
+def collect_instance_id(im_id, mesh_list):
+    meta = load_json(im_id)
+
+    rlookup = {os.path.splitext(mesh.name)[0]: idx + 1 for idx, mesh in enumerate(mesh_list)}
+    obj_ins_map = defaultdict(list)
+    del_set = set()
+    for ins_path, cls_name, obj in load_obj_files(meta):
+        obj_name = os.path.splitext(os.path.basename(obj))[0]
+        try:
+            ins_id = conf.trim_ins_path(ins_path.split('/'), cls_name)
+            obj_ins_map[ins_id].append(rlookup[obj_name])
+        except ValueError as e:
+            print('Skipping {} due to {}'.format(obj_name, e), file=sys.stderr)
+            del_set.add(rlookup[obj_name] - 1)
+
+    return obj_ins_map, del_set
+
+
 class MaskObj(RenderObj):
     def __init__(self, start_id, auto_generate=False, load_shapenet=True):
         super(MaskObj, self).__init__(start_id, not auto_generate, conf.partmask_dir)
@@ -88,7 +106,8 @@ class MaskObj(RenderObj):
                 print(first(e.cmd), 'err code', e.returncode, file=sys.stderr)
             except (FileNotFoundError, IOError) as e:
                 print(e, file=sys.stderr)
-        self.collect_instance_id()
+        self.obj_ins_map, del_set = collect_instance_id(conf.dblist[self.imageid], self.scene.mesh_list)
+        self.del_set.update(del_set)
 
         Thread(target=self, daemon=True).start()
 
@@ -109,20 +128,6 @@ class MaskObj(RenderObj):
                     for p in m.faces:
                         print("f %d %d %d" % tuple(i + 1 for i in p), file=f)
             return np.array(self.load_pcd(d, leaf_size=0.001))
-
-    def collect_instance_id(self):
-        meta = load_json(conf.dblist[self.imageid])
-
-        rlookup = {os.path.splitext(mesh.name)[0]: idx + 1 for idx, mesh in enumerate(self.scene.mesh_list)}
-        self.obj_ins_map = defaultdict(list)
-        for ins_path, cls_name, obj in load_obj_files(meta):
-            obj_name = os.path.splitext(os.path.basename(obj))[0]
-            try:
-                ins_id = conf.trim_ins_path(ins_path.split('/'), cls_name)
-                self.obj_ins_map[ins_id].append(rlookup[obj_name])
-            except ValueError as e:
-                print('Skipping {} due to {}'.format(obj_name, e), file=sys.stderr)
-                self.del_set.add(rlookup[obj_name] - 1)
 
     def __call__(self, *args, **kwargs):
         try:

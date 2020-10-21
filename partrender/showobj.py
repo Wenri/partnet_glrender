@@ -384,9 +384,12 @@ class ShowObj(object):
         pos *= np.array(stencil.shape)
         w, h = pos.T.astype(np.int)
 
-        ret = np.ones(shape=(n,), dtype=np.bool)
-        ret[in_screen_mask] = np.logical_and(stencil[w, h] > 0, xyz[in_screen_mask, 2] >= depth[w, h])
+        d = xyz[in_screen_mask, 2]
+        d += 1.0
+        d /= 2.0
 
+        ret = np.ones(shape=(n,), dtype=np.bool)
+        ret[in_screen_mask] = np.logical_or(stencil[w, h] == 0, d < depth[w, h])
         return ret
 
     def get_buffer(self, buf_type_str='GL_RGB'):
