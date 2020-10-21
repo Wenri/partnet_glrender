@@ -1,12 +1,12 @@
 import faulthandler
-import math
 import os
 from threading import Thread
 
 import numpy as np
 from pyglet.gl import *
 from trimesh import Trimesh
-from trimesh.proximity import closest_point
+from trimesh.proximity import nearby_faces, closest_point_corresponding
+from trimesh.util import diagonal_dot
 
 from partrender.partmask import collect_instance_id
 from partrender.rendering import RenderObj
@@ -86,26 +86,32 @@ class OccuObj(RenderObj):
 
             self.render_ack.wait()
 
+            print(len(self.is_cube_visible) - np.count_nonzero(self.is_cube_visible))
             save_dir = os.path.join(self.render_dir, im_id)
             os.makedirs(save_dir, exist_ok=True)
-            pts = self.cube[np.logical_not(self.is_cube_visible)].astype(np.float32)
-            n_pts, _ = pts.shape
-            dist_mtl = []
-            print(f'{n_pts}/{len(self.scene.mesh_list)}', end=' ')
-            for idx, mesh in enumerate(self.scene.mesh_list):
-                print(idx, end=':')
-                query = Trimesh(vertices=self.scene.vertices, faces=mesh.faces)
-                step = 10000
-                dist_all = []
-                for i in range(0, n_pts, step):
-                    _, dist, _ = closest_point(query, pts[i:i + step, :])
-                    dist_all.append(dist)
-                    progress = math.floor(10 * (i + step) / n_pts)
-                    print('D' if progress >= 10 else progress, end='')
-                print(' ', end='')
-                dist_mtl.append(np.concatenate(dist_all, axis=0))
+            mask = np.logical_not(self.is_cube_visible)
+            pts = self.cube[mask].astype(np.float32)
 
-            mtl_ids = np.argmin(np.stack(dist_mtl, axis=-1), axis=-1) + 1
+            all_faces = []
+            faces_mtl = []
+            for idx, mesh in enumerate(self.scene.mesh_list):
+                all_faces += mesh.faces
+                faces_mtl += [idx + 1] * len(mesh.faces)
+
+            faces_mtl = np.array(faces_mtl, dtype=np.int)
+            query = Trimesh(vertices=self.scene.vertices, faces=all_faces)
+            candidates = nearby_faces(query, pts)
+            triangles = query.triangles.view(np.ndarray)
+
+            def query_close(fid, p):
+                qp = closest_point_corresponding(triangles[fid], np.broadcast_to(p[np.newaxis, :], shape=(len(fid), 3)))
+                qv = qp - p
+                return fid[np.argmin(diagonal_dot(qv, qv))]
+
+            triangle_id = [query_close(idx, p) for idx, p in zip(candidates, pts)]
+
+            mtl_ids = faces_mtl[triangle_id]
+
             ins_list = list(self.obj_ins_map.items())
             in_mask = np.stack([np.isin(mtl_ids, meshes) for ins_path, meshes in ins_list], axis=-1)
 
