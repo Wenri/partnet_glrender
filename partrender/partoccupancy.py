@@ -1,11 +1,12 @@
 import faulthandler
+import math
 import os
 from threading import Thread
 
 import numpy as np
 from pyglet.gl import *
 from trimesh import Trimesh
-from trimesh.proximity import ProximityQuery
+from trimesh.proximity import closest_point
 
 from partrender.partmask import collect_instance_id
 from partrender.rendering import RenderObj
@@ -85,23 +86,26 @@ class OccuObj(RenderObj):
 
             self.render_ack.wait()
 
-            print(len(self.is_cube_visible) - np.count_nonzero(self.is_cube_visible))
             save_dir = os.path.join(self.render_dir, im_id)
             os.makedirs(save_dir, exist_ok=True)
-            mask = np.logical_not(self.is_cube_visible)
-            pts = self.cube[mask].astype(np.float32)
-
-            all_faces = []
-            faces_mtl = []
+            pts = self.cube[np.logical_not(self.is_cube_visible)].astype(np.float32)
+            n_pts, _ = pts.shape
+            dist_mtl = []
+            print(f'{n_pts}/{len(self.scene.mesh_list)}', end=' ')
             for idx, mesh in enumerate(self.scene.mesh_list):
-                all_faces += mesh.faces
-                faces_mtl += [idx + 1] * len(mesh.faces)
+                print(idx, end=':')
+                query = Trimesh(vertices=self.scene.vertices, faces=mesh.faces)
+                step = 10000
+                dist_all = []
+                for i in range(0, n_pts, step):
+                    _, dist, _ = closest_point(query, pts[i:i + step, :])
+                    dist_all.append(dist)
+                    progress = math.floor(10 * (i + step) / n_pts)
+                    print('D' if progress >= 10 else progress, end='')
+                print(' ', end='')
+                dist_mtl.append(np.concatenate(dist_all, axis=0))
 
-            faces_mtl = np.array(faces_mtl, dtype=np.int)
-            query = ProximityQuery(Trimesh(vertices=self.scene.vertices, faces=all_faces))
-            closest, distance, triangle_id = query.on_surface(pts)
-            mtl_ids = faces_mtl[triangle_id]
-
+            mtl_ids = np.argmin(np.stack(dist_mtl, axis=-1), axis=-1) + 1
             ins_list = list(self.obj_ins_map.items())
             in_mask = np.stack([np.isin(mtl_ids, meshes) for ins_path, meshes in ins_list], axis=-1)
 
@@ -127,4 +131,4 @@ def main(idx, autogen=True):
 
 
 if __name__ == '__main__':
-    main(0, autogen=True)
+    main(311, autogen=True)
