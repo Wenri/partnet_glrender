@@ -365,6 +365,30 @@ class ShowObj(object):
         xyz = np.linalg.solve(m_trans.T.astype(np.float64), xyz)  # Inverse transform
         return xyz.T, label
 
+    def point_is_visible(self, p):
+        n, d = p.shape
+        assert d == 3
+        p = np.concatenate([p, np.ones(shape=[n, 1])], axis=-1)
+        m_trans = get_gl_matrix('PROJECTION')
+        m_trans = np.matmul(get_gl_matrix('MODELVIEW'), m_trans)  # get combined transform matrix
+        p = np.matmul(p, m_trans.astype(np.float64))
+
+        depth, stencil = self.get_depth_stencil()
+
+        xyz = p[:, :3] / p[:, 3][:, np.newaxis]
+        pos = xyz[:, :2]
+        in_screen_mask = np.logical_and(np.all(pos >= -1.0, axis=-1), np.all(pos < 1.0, axis=-1))
+        pos = np.fliplr(pos[in_screen_mask, :])
+        pos += 1.0
+        pos /= 2.0
+        pos *= np.array(stencil.shape)
+        w, h = pos.T.astype(np.int)
+
+        ret = np.ones(shape=(n,), dtype=np.bool)
+        ret[in_screen_mask] = np.logical_and(stencil[w, h] > 0, xyz[in_screen_mask, 2] >= depth[w, h])
+
+        return ret
+
     def get_buffer(self, buf_type_str='GL_RGB'):
         x, y, width, height = self.viewport
         buf_type, buf_ctypes, buf_data_type, ch = self._BUFFER_TYPE.get(buf_type_str)
