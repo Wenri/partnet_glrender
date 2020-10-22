@@ -144,6 +144,20 @@ def query_triangles(all_triangles, candidates, pts):
 
 
 class OccuObj(RenderObj):
+    rot_angle_list = [
+        (0, 0), (0, -45), (0, 45), (0, -90), (0, 90),
+        (-180, 0), (-180, -45), (-180, 45),
+
+        (-45, 0), (-45, 45), (-45, -45),
+        (45, 0), (45, 45), (45, -45),
+
+        (90, 0), (90, 45), (-90, -45),
+        (-90, 0), (-90, 45), (-90, -45),
+
+        (-135, 0), (-135, 45), (-135, -45),
+        (135, 0), (135, 45), (135, -45)
+    ]
+
     def __init__(self, start_id, auto_generate=False):
         super().__init__(start_id, not auto_generate, conf.partoccu_dir)
         self.n_samples = 20
@@ -195,6 +209,17 @@ class OccuObj(RenderObj):
     def save_buffer(self, im_name='render'):
         self.is_cube_visible = np.logical_or(self.is_cube_visible, self.point_is_visible(self.cube))
 
+    def update_cube_visible(self):
+        for rot_angle in self.rot_angle_list:
+            with self.set_render_name(str(rot_angle)):
+                self.rot_angle = np.array(rot_angle, dtype=np.float32)
+        for seed in range(self.n_samples):
+            rot_angle = np.random.uniform(low=-180, high=180, size=[2])
+            with self.set_render_name(str(rot_angle)):
+                self.rot_angle = np.array(rot_angle, dtype=np.float32)
+
+        self.render_ack.wait()
+
     def __call__(self, *args, **kwargs):
         try:
             im_id = conf.dblist[self.imageid]
@@ -204,30 +229,10 @@ class OccuObj(RenderObj):
             #     self.update_scene(Wavefront('data/cube.obj', collect_faces=True))
             # sleep(1)
 
-            rot_angle_list = [
-                (0, 0), (0, -45), (0, 45), (0, -90), (0, 90),
-                (-180, 0), (-180, -45), (-180, 45),
-
-                (-45, 0), (-45, 45), (-45, -45),
-                (45, 0), (45, 45), (45, -45),
-
-                (90, 0), (90, 45), (-90, -45),
-                (-90, 0), (-90, 45), (-90, -45),
-
-                (-135, 0), (-135, 45), (-135, -45),
-                (135, 0), (135, 45), (135, -45)
-            ]
-
+            b_resample = False
+            scale_factor = 1
             while True:
-                for rot_angle in rot_angle_list:
-                    with self.set_render_name(str(rot_angle)):
-                        self.rot_angle = np.array(rot_angle, dtype=np.float32)
-                for seed in range(self.n_samples):
-                    rot_angle = np.random.uniform(low=-180, high=180, size=[2])
-                    with self.set_render_name(str(rot_angle)):
-                        self.rot_angle = np.array(rot_angle, dtype=np.float32)
-
-                self.render_ack.wait()
+                self.update_cube_visible()
 
                 save_dir = os.path.join(self.render_dir, im_id)
                 os.makedirs(save_dir, exist_ok=True)
@@ -237,11 +242,14 @@ class OccuObj(RenderObj):
                 n_pts, _ = pts.shape
                 print(f'{n_pts}/{n_cube}', end=' ')
 
-                if n_pts >= self.min_pts_count:
+                if n_pts * scale_factor >= self.min_pts_count:
                     break
+                elif b_resample:
+                    self.n_pts_count *= max(int(self.min_pts_count / n_pts), 2)
+                    scale_factor = 2
+                    print(f'-> {self.n_pts_count}', end=' ')
 
-                self.n_pts_count *= max(int(self.min_pts_count / n_pts), 2)
-                print(f'-> {self.n_pts_count}', end=' ')
+                b_resample = True
                 self.sample_cube(margin=0.02)
 
             all_faces = []
@@ -291,4 +299,4 @@ def main(idx, autogen=True):
 
 
 if __name__ == '__main__':
-    main(339, autogen=True)
+    main(340, autogen=True)
