@@ -39,7 +39,7 @@ def nearby_faces(mesh, points, tol_merge=1e-8):
 
 
 @njit(fastmath=True)
-def query_triangles(all_triangles, candidates, candidates_len, pts):
+def query_triangles(all_triangles, candidates, pts):
     # if we dot product this against a (n, 3)
     # it is equivalent but faster than array.sum(axis=1)
     ones = np.ones(3)
@@ -137,12 +137,9 @@ def query_triangles(all_triangles, candidates, candidates_len, pts):
 
     n_pts, _ = pts.shape
     ret = np.empty(n_pts, dtype=np.int64)
-    cur_start = 0
-    for i, cur_len in enumerate(candidates_len):
-        fid = candidates[cur_start:cur_start + cur_len]
+    for i, fid in enumerate(candidates):
         qv = closest_point_corresponding(all_triangles[fid], pts[i]) - pts[i]
         ret[i] = fid[np.argmin(np.dot(qv * qv, ones))]
-        cur_start += cur_len
     return ret
 
 
@@ -150,6 +147,8 @@ class OccuObj(RenderObj):
     def __init__(self, start_id, auto_generate=False):
         super().__init__(start_id, not auto_generate, conf.partoccu_dir)
         self.n_samples = 20
+        self.n_pts_count = None
+        self.min_pts_count = None
         self.cube = None
         self.is_cube_visible = None
         self.obj_ins_map = None
@@ -158,22 +157,31 @@ class OccuObj(RenderObj):
         super().window_load(window)
         self.obj_ins_map, del_set = collect_instance_id(conf.dblist[self.imageid], self.scene.mesh_list)
         self.del_set.update(del_set)
+        self.n_pts_count = 50000
+        self.min_pts_count = 16384
         self.sample_cube()
 
         Thread(target=self, daemon=True).start()
 
-    def sample_cube(self, n=15000, margin=0.1):
+    def sample_cube(self, margin=0.05):
         def sub_sample(sub_vts):
-            sub_p = []
-            for sub_min, sub_max in zip(np.min(sub_vts, axis=0) - margin, np.max(sub_vts, axis=0) + margin):
-                sub_p.append(np.random.uniform(sub_min, sub_max, size=n))
+            sub_min = np.min(sub_vts, axis=0) - margin
+            sub_max = np.max(sub_vts, axis=0) + margin
+            return sub_min, sub_max
+
+        def tri_sample(bound, number):
+            sub_p = [np.random.uniform(sub_min, sub_max, size=number) for sub_min, sub_max in zip(bound[0], bound[1])]
             return np.stack(sub_p, axis=-1)
 
         vts = np.asanyarray(self.scene.vertices, dtype=np.float32)
         sample_p = [
             sub_sample(vts[np.unique(np.asanyarray(mesh.faces, dtype=np.int))]) for mesh in self.scene.mesh_list
         ]
-        sample_p.append(sub_sample(vts))
+        area = np.array([np.prod(sub_max - sub_min) for sub_min, sub_max in sample_p])
+        area_points = area * self.n_pts_count / np.sum(area)
+        sample_p = [tri_sample(bound, number) for bound, number in zip(sample_p, area_points.astype(np.int64))]
+
+        sample_p.append(tri_sample(sub_sample(vts), self.n_pts_count))
 
         self.cube = np.concatenate(sample_p, axis=0)
         self.is_cube_visible = np.zeros(shape=(self.cube.shape[0],), dtype=np.bool)
@@ -209,23 +217,32 @@ class OccuObj(RenderObj):
                 (-135, 0), (-135, 45), (-135, -45),
                 (135, 0), (135, 45), (135, -45)
             ]
-            for rot_angle in rot_angle_list:
-                with self.set_render_name(str(rot_angle)):
-                    self.rot_angle = np.array(rot_angle, dtype=np.float32)
-            for seed in range(self.n_samples):
-                rot_angle = np.random.uniform(low=-180, high=180, size=[2])
-                with self.set_render_name(str(rot_angle)):
-                    self.rot_angle = np.array(rot_angle, dtype=np.float32)
 
-            self.render_ack.wait()
+            while True:
+                for rot_angle in rot_angle_list:
+                    with self.set_render_name(str(rot_angle)):
+                        self.rot_angle = np.array(rot_angle, dtype=np.float32)
+                for seed in range(self.n_samples):
+                    rot_angle = np.random.uniform(low=-180, high=180, size=[2])
+                    with self.set_render_name(str(rot_angle)):
+                        self.rot_angle = np.array(rot_angle, dtype=np.float32)
 
-            save_dir = os.path.join(self.render_dir, im_id)
-            os.makedirs(save_dir, exist_ok=True)
-            non_visible_mask = np.logical_not(self.is_cube_visible)
-            pts = self.cube[non_visible_mask].astype(np.float32)
-            n_cube, _ = self.cube.shape
-            n_pts, _ = pts.shape
-            print(f'{n_pts}/{n_cube}', end=' ')
+                self.render_ack.wait()
+
+                save_dir = os.path.join(self.render_dir, im_id)
+                os.makedirs(save_dir, exist_ok=True)
+                non_visible_mask = np.logical_not(self.is_cube_visible)
+                pts = self.cube[non_visible_mask].astype(np.float32)
+                n_cube, _ = self.cube.shape
+                n_pts, _ = pts.shape
+                print(f'{n_pts}/{n_cube}', end=' ')
+
+                if n_pts >= self.min_pts_count:
+                    break
+
+                self.n_pts_count *= max(int(self.min_pts_count / n_pts), 2)
+                print(f'-> {self.n_pts_count}', end=' ')
+                self.sample_cube(margin=0.02)
 
             all_faces = []
             faces_mtl = []
@@ -240,10 +257,10 @@ class OccuObj(RenderObj):
             candidates_lens = np.fromiter(map(len, candidates), dtype=np.int64, count=len(candidates))
             print(f'nearby_faces ', np.max(candidates_lens), end=' ')
 
-            candidates = np.concatenate(candidates)
-            print('np_concatenate', end=' ')
+            # candidates = np.concatenate(candidates)
+            # print('np_concatenate', end=' ')
 
-            triangle_id = query_triangles(triangles, candidates, candidates_lens, pts)
+            triangle_id = query_triangles(triangles, candidates, pts)
             print('query_triangles', end=' ')
 
             mtl_ids = np.zeros(shape=(n_cube,), dtype=np.int)
@@ -274,4 +291,4 @@ def main(idx, autogen=True):
 
 
 if __name__ == '__main__':
-    main(324, autogen=True)
+    main(339, autogen=True)
