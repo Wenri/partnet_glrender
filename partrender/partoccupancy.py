@@ -221,6 +221,39 @@ class OccuObj(RenderObj):
 
         self.render_ack.wait()
 
+    def get_cube_mtl_id(self):
+        n_cube, _ = self.cube.shape
+        mtl_ids = np.zeros(shape=(n_cube,), dtype=np.int)
+
+        if np.count_nonzero(self.is_cube_visible) >= n_cube:
+            return mtl_ids
+
+        non_visible_mask = np.logical_not(self.is_cube_visible)
+        pts = self.cube[non_visible_mask].astype(np.float32)
+
+        all_faces = []
+        faces_mtl = []
+        for idx, mesh in enumerate(self.scene.mesh_list):
+            all_faces += mesh.faces
+            faces_mtl += [idx + 1] * len(mesh.faces)
+
+        faces_mtl = np.array(faces_mtl, dtype=np.int)
+        query = Trimesh(vertices=self.scene.vertices, faces=all_faces)
+        candidates = nearby_faces(query, pts)
+        triangles = query.triangles.view(np.ndarray)
+        candidates_lens = np.fromiter(map(len, candidates), dtype=np.int64, count=len(candidates))
+        print(f'nearby_faces ', np.max(candidates_lens), end=' ')
+
+        # candidates = np.concatenate(candidates)
+        # print('np_concatenate', end=' ')
+
+        triangle_id = query_triangles(triangles, candidates, pts)
+        print('query_triangles', end=' ')
+
+        mtl_ids[non_visible_mask] = faces_mtl[triangle_id]
+
+        return mtl_ids
+
     def __call__(self, *args, **kwargs):
         try:
             im_id = conf.dblist[self.imageid]
@@ -237,15 +270,15 @@ class OccuObj(RenderObj):
 
                 save_dir = os.path.join(self.render_dir, im_id)
                 os.makedirs(save_dir, exist_ok=True)
-                non_visible_mask = np.logical_not(self.is_cube_visible)
-                pts = self.cube[non_visible_mask].astype(np.float32)
                 n_cube, _ = self.cube.shape
-                n_pts, _ = pts.shape
+                n_pts = n_cube - np.count_nonzero(self.is_cube_visible)
                 print(f'{n_pts}/{n_cube}', end=' ')
 
                 if n_pts * scale_factor >= self.min_pts_count:
                     break
                 elif b_resample:
+                    if n_pts < 10:
+                        break
                     self.n_pts_count *= int(max(math.ceil(self.min_pts_count / n_pts), 2))
                     scale_factor = 2
                     print(f'-> {self.n_pts_count}', end=' ')
@@ -253,28 +286,7 @@ class OccuObj(RenderObj):
                 b_resample = True
                 self.sample_cube(margin=0.02)
 
-            all_faces = []
-            faces_mtl = []
-            for idx, mesh in enumerate(self.scene.mesh_list):
-                all_faces += mesh.faces
-                faces_mtl += [idx + 1] * len(mesh.faces)
-
-            faces_mtl = np.array(faces_mtl, dtype=np.int)
-            query = Trimesh(vertices=self.scene.vertices, faces=all_faces)
-            candidates = nearby_faces(query, pts)
-            triangles = query.triangles.view(np.ndarray)
-            candidates_lens = np.fromiter(map(len, candidates), dtype=np.int64, count=len(candidates))
-            print(f'nearby_faces ', np.max(candidates_lens), end=' ')
-
-            # candidates = np.concatenate(candidates)
-            # print('np_concatenate', end=' ')
-
-            triangle_id = query_triangles(triangles, candidates, pts)
-            print('query_triangles', end=' ')
-
-            mtl_ids = np.zeros(shape=(n_cube,), dtype=np.int)
-            mtl_ids[non_visible_mask] = faces_mtl[triangle_id]
-
+            mtl_ids = self.get_cube_mtl_id()
             ins_list = list(self.obj_ins_map.items())
             in_mask = [self.is_cube_visible] + [np.isin(mtl_ids, meshes) for ins_path, meshes in ins_list]
 
@@ -300,4 +312,4 @@ def main(idx, autogen=True):
 
 
 if __name__ == '__main__':
-    main(355, autogen=True)
+    main(567, autogen=True)
