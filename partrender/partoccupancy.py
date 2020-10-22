@@ -1,16 +1,41 @@
 import faulthandler
 import os
+import types
 from threading import Thread
 
 import numpy as np
 from numba import njit
 from pyglet.gl import *
 from trimesh import Trimesh
-from trimesh.proximity import nearby_faces
 
 from partrender.partmask import collect_instance_id
 from partrender.rendering import RenderObj
 from tools.cfgreader import conf
+
+
+def nearby_faces(mesh, points, tol_merge=1e-8):
+    # an r-tree containing the axis aligned bounding box for every triangle
+    rtree = mesh.triangles_tree
+    # a kd-tree containing every vertex of the mesh
+    kdtree = mesh.kdtree
+
+    # query the distance to the nearest vertex to get AABB of a sphere
+    distance_vertex = kdtree.query(points)[0].reshape((-1, 1))
+    distance_vertex += tol_merge
+
+    # axis aligned bounds
+    bounds = np.column_stack((points - distance_vertex,
+                              points + distance_vertex))
+
+    def _get_ids(self, it, num_results):
+        return np.fromiter(self._get_ids_orig(it, num_results), dtype=np.int64, count=num_results)
+
+    rtree._get_ids_orig = rtree._get_ids
+    rtree._get_ids = types.MethodType(_get_ids, rtree)
+    # faces that intersect axis aligned bounding box
+    candidates = [rtree.intersection(b) for b in bounds]
+
+    return candidates
 
 
 @njit(fastmath=True)
@@ -213,10 +238,13 @@ class OccuObj(RenderObj):
             candidates = nearby_faces(query, pts)
             triangles = query.triangles.view(np.ndarray)
             candidates_lens = np.fromiter(map(len, candidates), dtype=np.int64, count=len(candidates))
-            candidates = np.concatenate(candidates)
             print(f'nearby_faces ', np.max(candidates_lens), end=' ')
 
+            candidates = np.concatenate(candidates)
+            print('np_concatenate', end=' ')
+
             triangle_id = query_triangles(triangles, candidates, candidates_lens, pts)
+            print('query_triangles', end=' ')
 
             mtl_ids = np.zeros(shape=(n_cube,), dtype=np.int)
             mtl_ids[non_visible_mask] = faces_mtl[triangle_id]
@@ -246,4 +274,4 @@ def main(idx, autogen=True):
 
 
 if __name__ == '__main__':
-    main(0, autogen=True)
+    main(324, autogen=True)
