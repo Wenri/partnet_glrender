@@ -3,14 +3,122 @@ import os
 from threading import Thread
 
 import numpy as np
+from numba import njit
 from pyglet.gl import *
 from trimesh import Trimesh
-from trimesh.proximity import nearby_faces, closest_point_corresponding
-from trimesh.util import diagonal_dot
+from trimesh.proximity import nearby_faces
 
 from partrender.partmask import collect_instance_id
 from partrender.rendering import RenderObj
 from tools.cfgreader import conf
+
+
+@njit(fastmath=True)
+def query_triangles(all_triangles, candidates, candidates_len, pts):
+    # if we dot product this against a (n, 3)
+    # it is equivalent but faster than array.sum(axis=1)
+    ones = np.ones(3)
+    tol_zero = np.finfo(np.float64).resolution * 100
+
+    def closest_point_corresponding(triangles, points):
+        # check input triangles and points
+        n_triangles, _, _ = triangles.shape
+
+        # store the location of the closest point
+        result = np.zeros((n_triangles, 3))
+        # which points still need to be handled
+        remain = np.ones(n_triangles, dtype=np.bool_)
+
+        # get the three points of each triangle
+        # use the same notation as RTCD to avoid confusion
+        a = triangles[:, 0, :]
+        b = triangles[:, 1, :]
+        c = triangles[:, 2, :]
+
+        # check if P is in vertex region outside A
+        ab = b - a
+        ac = c - a
+        ap = points - a
+        # this is a faster equivalent of:
+        # diagonal_dot(ab, ap)
+        d1 = np.dot(ab * ap, ones)
+        d2 = np.dot(ac * ap, ones)
+
+        # is the point at A
+        is_a = np.logical_and(d1 < tol_zero, d2 < tol_zero)
+        if np.any(is_a):
+            result[is_a] = a[is_a]
+            remain[is_a] = False
+
+        # check if P in vertex region outside B
+        bp = points - b
+        d3 = np.dot(ab * bp, ones)
+        d4 = np.dot(ac * bp, ones)
+
+        # do the logic check
+        is_b = (d3 > -tol_zero) & (d4 <= d3) & remain
+        if np.any(is_b):
+            result[is_b] = b[is_b]
+            remain[is_b] = False
+
+        # check if P in edge region of AB, if so return projection of P onto A
+        vc = (d1 * d4) - (d3 * d2)
+        is_ab = ((vc < tol_zero) &
+                 (d1 > -tol_zero) &
+                 (d3 < tol_zero) & remain)
+        if np.any(is_ab):
+            v = (d1[is_ab] / (d1[is_ab] - d3[is_ab])).reshape((-1, 1))
+            result[is_ab] = a[is_ab] + (v * ab[is_ab])
+            remain[is_ab] = False
+
+        # check if P in vertex region outside C
+        cp = points - c
+        d5 = np.dot(ab * cp, ones)
+        d6 = np.dot(ac * cp, ones)
+        is_c = (d6 > -tol_zero) & (d5 <= d6) & remain
+        if np.any(is_c):
+            result[is_c] = c[is_c]
+            remain[is_c] = False
+
+        # check if P in edge region of AC, if so return projection of P onto AC
+        vb = (d5 * d2) - (d1 * d6)
+        is_ac = (vb < tol_zero) & (d2 > -tol_zero) & (d6 < tol_zero) & remain
+        if np.any(is_ac):
+            w = (d2[is_ac] / (d2[is_ac] - d6[is_ac])).reshape((-1, 1))
+            result[is_ac] = a[is_ac] + w * ac[is_ac]
+            remain[is_ac] = False
+
+        # check if P in edge region of BC, if so return projection of P onto BC
+        va = (d3 * d6) - (d5 * d4)
+        is_bc = ((va < tol_zero) &
+                 ((d4 - d3) > - tol_zero) &
+                 ((d5 - d6) > -tol_zero) & remain)
+        if np.any(is_bc):
+            d43 = d4[is_bc] - d3[is_bc]
+            w = (d43 / (d43 + (d5[is_bc] - d6[is_bc]))).reshape((-1, 1))
+            result[is_bc] = b[is_bc] + w * (c[is_bc] - b[is_bc])
+            remain[is_bc] = False
+
+        # any remaining points must be inside face region
+        if np.any(remain):
+            # point is inside face region
+            denom = 1.0 / (va[remain] + vb[remain] + vc[remain])
+            v = (vb[remain] * denom).reshape((-1, 1))
+            w = (vc[remain] * denom).reshape((-1, 1))
+            # compute Q through its barycentric coordinates
+            result[remain] = a[remain] + (ab[remain] * v) + (ac[remain] * w)
+
+        return result
+
+    n_pts, _ = pts.shape
+    ret = np.empty(n_pts, dtype=np.int64)
+    cur_start = 0
+    for i, cur_len in enumerate(candidates_len):
+        fid = candidates[cur_start:cur_start + cur_len]
+        qv = closest_point_corresponding(all_triangles[fid], pts[i]) - pts[i]
+        ret[i] = fid[np.argmin(np.dot(qv * qv, ones))]
+        cur_start += cur_len
+    return ret
 
 
 class OccuObj(RenderObj):
@@ -86,11 +194,13 @@ class OccuObj(RenderObj):
 
             self.render_ack.wait()
 
-            print(len(self.is_cube_visible) - np.count_nonzero(self.is_cube_visible))
             save_dir = os.path.join(self.render_dir, im_id)
             os.makedirs(save_dir, exist_ok=True)
-            mask = np.logical_not(self.is_cube_visible)
-            pts = self.cube[mask].astype(np.float32)
+            non_visible_mask = np.logical_not(self.is_cube_visible)
+            pts = self.cube[non_visible_mask].astype(np.float32)
+            n_cube, _ = self.cube.shape
+            n_pts, _ = pts.shape
+            print(f'{n_pts}/{n_cube}', end=' ')
 
             all_faces = []
             faces_mtl = []
@@ -102,22 +212,21 @@ class OccuObj(RenderObj):
             query = Trimesh(vertices=self.scene.vertices, faces=all_faces)
             candidates = nearby_faces(query, pts)
             triangles = query.triangles.view(np.ndarray)
+            candidates_lens = np.fromiter(map(len, candidates), dtype=np.int64, count=len(candidates))
+            candidates = np.concatenate(candidates)
+            print(f'nearby_faces ', np.max(candidates_lens), end=' ')
 
-            def query_close(fid, p):
-                qp = closest_point_corresponding(triangles[fid], np.broadcast_to(p[np.newaxis, :], shape=(len(fid), 3)))
-                qv = qp - p
-                return fid[np.argmin(diagonal_dot(qv, qv))]
+            triangle_id = query_triangles(triangles, candidates, candidates_lens, pts)
 
-            triangle_id = [query_close(idx, p) for idx, p in zip(candidates, pts)]
-
-            mtl_ids = faces_mtl[triangle_id]
+            mtl_ids = np.zeros(shape=(n_cube,), dtype=np.int)
+            mtl_ids[non_visible_mask] = faces_mtl[triangle_id]
 
             ins_list = list(self.obj_ins_map.items())
-            in_mask = np.stack([np.isin(mtl_ids, meshes) for ins_path, meshes in ins_list], axis=-1)
+            in_mask = [self.is_cube_visible] + [np.isin(mtl_ids, meshes) for ins_path, meshes in ins_list]
 
-            np.save(os.path.join(save_dir, f'occu-pts.npy'), pts)
+            np.save(os.path.join(save_dir, f'occu-pts.npy'), self.cube)
             np.save(os.path.join(save_dir, f'occu-ids.npy'), mtl_ids)
-            np.save(os.path.join(save_dir, f'occu-isin.npy'), np.argmax(in_mask, axis=-1))
+            np.save(os.path.join(save_dir, f'occu-isin.npy'), np.argmax(np.stack(in_mask, axis=-1), axis=-1))
 
             if not self.view_mode:
                 print('Switching...')
@@ -137,4 +246,4 @@ def main(idx, autogen=True):
 
 
 if __name__ == '__main__':
-    main(311, autogen=True)
+    main(0, autogen=True)
