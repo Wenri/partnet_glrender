@@ -1,4 +1,5 @@
 import faulthandler
+import math
 import os
 import types
 from threading import Thread
@@ -245,7 +246,7 @@ class OccuObj(RenderObj):
                 if n_pts * scale_factor >= self.min_pts_count:
                     break
                 elif b_resample:
-                    self.n_pts_count *= max(int(self.min_pts_count / n_pts), 2)
+                    self.n_pts_count *= int(max(math.ceil(self.min_pts_count / n_pts), 2))
                     scale_factor = 2
                     print(f'-> {self.n_pts_count}', end=' ')
 
@@ -299,4 +300,4 @@ def main(idx, autogen=True):
 
 
 if __name__ == '__main__':
-    main(340, autogen=True)
+    main(355, autogen=True)
