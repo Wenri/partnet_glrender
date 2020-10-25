@@ -49,10 +49,10 @@ class OccuObj(RenderObj):
 
         Thread(target=self, daemon=True).start()
 
-    def sample_cube(self, margin=0.05):
-        def sub_sample(sub_vts):
-            sub_min = np.min(sub_vts, axis=0) - margin
-            sub_max = np.max(sub_vts, axis=0) + margin
+    def sample_cube(self, margin=0.05, global_margin=0.1):
+        def sub_sample(sub_vts, sub_margin=margin):
+            sub_min = np.min(sub_vts, axis=0) - sub_margin
+            sub_max = np.max(sub_vts, axis=0) + sub_margin
             return sub_min, sub_max
 
         def tri_sample(bound, number):
@@ -67,7 +67,7 @@ class OccuObj(RenderObj):
         area_points = area * self.n_pts_count / np.sum(area)
         sample_p = [tri_sample(bound, number) for bound, number in zip(sample_p, area_points.astype(np.int64))]
 
-        sample_p.append(tri_sample(sub_sample(vts), self.n_pts_count))
+        sample_p.append(tri_sample(sub_sample(vts, sub_margin=global_margin), self.n_pts_count))
 
         self.cube = np.concatenate(sample_p, axis=0)
         self.is_cube_visible = np.zeros(shape=(self.cube.shape[0],), dtype=np.bool)
@@ -150,4 +150,4 @@ def main(idx, autogen=True):
 
 
 if __name__ == '__main__':
-    main(4334, autogen=True)
+    main(5330, autogen=True)
