@@ -1,147 +1,18 @@
 import faulthandler
 import math
+import multiprocessing as mp
 import os
-import types
 from threading import Thread
 
 import numpy as np
-from numba import njit
 from pyglet.gl import *
-from trimesh import Trimesh
 
+from partrender.occupancy_query import call_and_wait_query_proc
 from partrender.partmask import collect_instance_id
 from partrender.rendering import RenderObj
 from tools.cfgreader import conf
 
-
-def nearby_faces(mesh, points, tol_merge=1e-8):
-    # an r-tree containing the axis aligned bounding box for every triangle
-    rtree = mesh.triangles_tree
-    # a kd-tree containing every vertex of the mesh
-    kdtree = mesh.kdtree
-
-    # query the distance to the nearest vertex to get AABB of a sphere
-    distance_vertex = kdtree.query(points)[0].reshape((-1, 1))
-    distance_vertex += tol_merge
-
-    # axis aligned bounds
-    bounds = np.column_stack((points - distance_vertex,
-                              points + distance_vertex))
-
-    def _get_ids(self, it, num_results):
-        return np.fromiter(self._get_ids_orig(it, num_results), dtype=np.int64, count=num_results)
-
-    rtree._get_ids_orig = rtree._get_ids
-    rtree._get_ids = types.MethodType(_get_ids, rtree)
-    # faces that intersect axis aligned bounding box
-    candidates = [rtree.intersection(b) for b in bounds]
-
-    return candidates
-
-
-@njit(fastmath=True)
-def query_triangles(all_triangles, candidates, pts):
-    # if we dot product this against a (n, 3)
-    # it is equivalent but faster than array.sum(axis=1)
-    ones = np.ones(3)
-    tol_zero = np.finfo(np.float64).resolution * 100
-
-    def closest_point_corresponding(triangles, points):
-        # check input triangles and points
-        n_triangles, _, _ = triangles.shape
-
-        # store the location of the closest point
-        result = np.zeros((n_triangles, 3))
-        # which points still need to be handled
-        remain = np.ones(n_triangles, dtype=np.bool_)
-
-        # get the three points of each triangle
-        # use the same notation as RTCD to avoid confusion
-        a = triangles[:, 0, :]
-        b = triangles[:, 1, :]
-        c = triangles[:, 2, :]
-
-        # check if P is in vertex region outside A
-        ab = b - a
-        ac = c - a
-        ap = points - a
-        # this is a faster equivalent of:
-        # diagonal_dot(ab, ap)
-        d1 = np.dot(ab * ap, ones)
-        d2 = np.dot(ac * ap, ones)
-
-        # is the point at A
-        is_a = np.logical_and(d1 < tol_zero, d2 < tol_zero)
-        if np.any(is_a):
-            result[is_a] = a[is_a]
-            remain[is_a] = False
-
-        # check if P in vertex region outside B
-        bp = points - b
-        d3 = np.dot(ab * bp, ones)
-        d4 = np.dot(ac * bp, ones)
-
-        # do the logic check
-        is_b = (d3 > -tol_zero) & (d4 <= d3) & remain
-        if np.any(is_b):
-            result[is_b] = b[is_b]
-            remain[is_b] = False
-
-        # check if P in edge region of AB, if so return projection of P onto A
-        vc = (d1 * d4) - (d3 * d2)
-        is_ab = ((vc < tol_zero) &
-                 (d1 > -tol_zero) &
-                 (d3 < tol_zero) & remain)
-        if np.any(is_ab):
-            v = (d1[is_ab] / (d1[is_ab] - d3[is_ab])).reshape((-1, 1))
-            result[is_ab] = a[is_ab] + (v * ab[is_ab])
-            remain[is_ab] = False
-
-        # check if P in vertex region outside C
-        cp = points - c
-        d5 = np.dot(ab * cp, ones)
-        d6 = np.dot(ac * cp, ones)
-        is_c = (d6 > -tol_zero) & (d5 <= d6) & remain
-        if np.any(is_c):
-            result[is_c] = c[is_c]
-            remain[is_c] = False
-
-        # check if P in edge region of AC, if so return projection of P onto AC
-        vb = (d5 * d2) - (d1 * d6)
-        is_ac = (vb < tol_zero) & (d2 > -tol_zero) & (d6 < tol_zero) & remain
-        if np.any(is_ac):
-            w = (d2[is_ac] / (d2[is_ac] - d6[is_ac])).reshape((-1, 1))
-            result[is_ac] = a[is_ac] + w * ac[is_ac]
-            remain[is_ac] = False
-
-        # check if P in edge region of BC, if so return projection of P onto BC
-        va = (d3 * d6) - (d5 * d4)
-        is_bc = ((va < tol_zero) &
-                 ((d4 - d3) > - tol_zero) &
-                 ((d5 - d6) > -tol_zero) & remain)
-        if np.any(is_bc):
-            d43 = d4[is_bc] - d3[is_bc]
-            w = (d43 / (d43 + (d5[is_bc] - d6[is_bc]))).reshape((-1, 1))
-            result[is_bc] = b[is_bc] + w * (c[is_bc] - b[is_bc])
-            remain[is_bc] = False
-
-        # any remaining points must be inside face region
-        if np.any(remain):
-            # point is inside face region
-            denom = 1.0 / (va[remain] + vb[remain] + vc[remain])
-            v = (vb[remain] * denom).reshape((-1, 1))
-            w = (vc[remain] * denom).reshape((-1, 1))
-            # compute Q through its barycentric coordinates
-            result[remain] = a[remain] + (ab[remain] * v) + (ac[remain] * w)
-
-        return result
-
-    n_pts, _ = pts.shape
-    ret = np.empty(n_pts, dtype=np.int64)
-    for i, fid in enumerate(candidates):
-        qv = closest_point_corresponding(all_triangles[fid], pts[i]) - pts[i]
-        ret[i] = fid[np.argmin(np.dot(qv * qv, ones))]
-    return ret
+mp.set_start_method('fork')
 
 
 class OccuObj(RenderObj):
@@ -221,39 +92,6 @@ class OccuObj(RenderObj):
 
         self.render_ack.wait()
 
-    def get_cube_mtl_id(self):
-        n_cube, _ = self.cube.shape
-        mtl_ids = np.zeros(shape=(n_cube,), dtype=np.int)
-
-        if np.count_nonzero(self.is_cube_visible) >= n_cube:
-            return mtl_ids
-
-        non_visible_mask = np.logical_not(self.is_cube_visible)
-        pts = self.cube[non_visible_mask].astype(np.float32)
-
-        all_faces = []
-        faces_mtl = []
-        for idx, mesh in enumerate(self.scene.mesh_list):
-            all_faces += mesh.faces
-            faces_mtl += [idx + 1] * len(mesh.faces)
-
-        faces_mtl = np.array(faces_mtl, dtype=np.int)
-        query = Trimesh(vertices=self.scene.vertices, faces=all_faces)
-        candidates = nearby_faces(query, pts)
-        triangles = query.triangles.view(np.ndarray)
-        candidates_lens = np.fromiter(map(len, candidates), dtype=np.int64, count=len(candidates))
-        print(f'nearby_faces ', np.max(candidates_lens), end=' ')
-
-        # candidates = np.concatenate(candidates)
-        # print('np_concatenate', end=' ')
-
-        triangle_id = query_triangles(triangles, candidates, pts)
-        print('query_triangles', end=' ')
-
-        mtl_ids[non_visible_mask] = faces_mtl[triangle_id]
-
-        return mtl_ids
-
     def __call__(self, *args, **kwargs):
         try:
             im_id = conf.dblist[self.imageid]
@@ -268,8 +106,6 @@ class OccuObj(RenderObj):
             while True:
                 self.update_cube_visible()
 
-                save_dir = os.path.join(self.render_dir, im_id)
-                os.makedirs(save_dir, exist_ok=True)
                 n_cube, _ = self.cube.shape
                 n_pts = n_cube - np.count_nonzero(self.is_cube_visible)
                 print(f'{n_pts}/{n_cube}', end=' ')
@@ -286,13 +122,15 @@ class OccuObj(RenderObj):
                 b_resample = True
                 self.sample_cube(margin=0.02)
 
-            mtl_ids = self.get_cube_mtl_id()
             ins_list = list(self.obj_ins_map.items())
-            in_mask = [self.is_cube_visible] + [np.isin(mtl_ids, meshes) for ins_path, meshes in ins_list]
 
-            np.save(os.path.join(save_dir, f'occu-pts.npy'), self.cube)
-            np.save(os.path.join(save_dir, f'occu-ids.npy'), mtl_ids)
-            np.save(os.path.join(save_dir, f'occu-isin.npy'), np.argmax(np.stack(in_mask, axis=-1), axis=-1))
+            save_dir = os.path.join(self.render_dir, im_id)
+            os.makedirs(save_dir, exist_ok=True)
+
+            call_and_wait_query_proc(
+                self.cube, self.is_cube_visible, self.scene.vertices, [mesh.faces for mesh in self.scene.mesh_list],
+                ins_list, save_dir
+            )
 
             if not self.view_mode:
                 print('Switching...')
@@ -312,4 +150,4 @@ def main(idx, autogen=True):
 
 
 if __name__ == '__main__':
-    main(567, autogen=True)
+    main(4334, autogen=True)
