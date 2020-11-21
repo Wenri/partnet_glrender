@@ -417,4 +417,4 @@ def main(im_file):
 
 
 if __name__ == '__main__':
-    main('/Volumes/gbcdisk/research/box.obj')
+    main('/mybookduo/research/box.obj')

@@ -13,6 +13,7 @@ from partrender.rendering import RenderObj
 from tools.cfgreader import conf
 
 mp.set_start_method('fork')
+MAX_N_PTS = 5000000
 
 
 class OccuObj(RenderObj):
@@ -113,9 +114,14 @@ class OccuObj(RenderObj):
                 if n_pts * scale_factor >= self.min_pts_count:
                     break
                 elif b_resample:
-                    if n_pts < 10:
+                    if self.n_pts_count >= MAX_N_PTS:
                         break
-                    self.n_pts_count *= int(max(math.ceil(self.min_pts_count / n_pts), 2))
+                    elif n_pts < 1:
+                        self.n_pts_count = MAX_N_PTS
+                    else:
+                        self.n_pts_count *= int(max(math.ceil(self.min_pts_count / n_pts), 2))
+                        if self.n_pts_count > MAX_N_PTS:
+                            self.n_pts_count = MAX_N_PTS
                     scale_factor = 2
                     print(f'-> {self.n_pts_count}', end=' ')
 
@@ -150,4 +156,4 @@ def main(idx, autogen=True):
 
 
 if __name__ == '__main__':
-    main(5330, autogen=True)
+    main(2628, autogen=True)  # till 5530

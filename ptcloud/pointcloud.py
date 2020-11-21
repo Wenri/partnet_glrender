@@ -6,15 +6,11 @@ from types import SimpleNamespace
 
 import numpy as np
 import pcl
-from matplotlib import pyplot
-from mpl_toolkits.mplot3d import Axes3D
-from mpl_toolkits.mplot3d.art3d import Line3DCollection
 
 from ptcloud.pcmatch import PCMatch, pclsimilarity, arr2pt
 from tools import blender_convert
 from tools.blender_convert import download_id
 from tools.cfgreader import conf
-from tools.matlabengine import MatEng
 
 blender_convert.DATA_URL = conf.partnet_url
 
@@ -62,6 +58,7 @@ def cvt_load_pcd(im_id, faceid=3, after_merging=True, n_samples=10000):
 
 
 def draw_bbox(ax, corner_points):
+    from mpl_toolkits.mplot3d.art3d import Line3DCollection
     ax.scatter(*corner_points.T, s=2, marker='+', color='b')
     vertices = ((0, 1, 2, 3, 0, 4, 5, 6, 7, 4),
                 (1, 5), (2, 6), (3, 7))
@@ -92,6 +89,7 @@ def filter_region(ref, a, margin=0.05):
 
 
 def eval_id(im_id, draw_plot=True, log_file=sys.stdout):
+    from tools.matlabengine import MatEng
     pcm = PCMatch(*cvt_load_pcd(im_id))
 
     MatEng.start(count=2)
@@ -120,6 +118,8 @@ def eval_id(im_id, draw_plot=True, log_file=sys.stdout):
             group_score[name] = np.Inf
 
     if draw_plot:
+        from matplotlib import pyplot
+        from mpl_toolkits.mplot3d import Axes3D
         fig = pyplot.figure()
         ax = Axes3D(fig)
 

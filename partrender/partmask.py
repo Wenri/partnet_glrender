@@ -13,7 +13,6 @@ from threading import Thread
 import numpy as np
 import pcl
 from more_itertools import first
-from pyglet.gl import *
 
 from partrender.rendering import RenderObj
 from ptcloud.pcmatch import PCMatch
