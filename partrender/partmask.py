@@ -152,7 +152,7 @@ class MaskObj(RenderObj):
                         print(ins_path, ','.join(map(str, meshes)), file=f)
                 ins_pc = [self.convert_mesh([self.scene.mesh_list[idx - 1] for idx in meshes])
                           for _, meshes in ins_list]
-                np.save(os.path.join(save_dir, 'render-INS_PC.npy'), ins_pc)
+                np.save(os.path.join(save_dir, 'render-INS_PC.npy'), np.array(ins_pc, dtype=np.object))
                 for i in range(self.n_samples):
                     with self.set_render_name('seed_{}'.format(i), wait=True):
                         self.swap_scene()
@@ -178,4 +178,4 @@ def main(idx, autogen=True):
 
 
 if __name__ == '__main__':
-    main(7460, autogen=True)
+    main(0, autogen=True)

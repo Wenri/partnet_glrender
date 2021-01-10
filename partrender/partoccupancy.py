@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import faulthandler
 import math
 import multiprocessing as mp
@@ -156,4 +158,4 @@ def main(idx, autogen=True):
 
 
 if __name__ == '__main__':
-    main(2628, autogen=True)  # till 5530
+    main(5460, autogen=False)  # till 5530

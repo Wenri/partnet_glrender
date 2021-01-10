@@ -18,7 +18,7 @@ from pyglet.gl import *
 from pywavefront import Wavefront
 from pywavefront.visualization import gl_light, bind_texture
 
-from partrender.showobj import ShowObj
+from partrender.showobj import ShowObj, get_gl_matrix
 from tools.cfgreader import conf
 
 
@@ -96,7 +96,7 @@ class RenderObj(ShowObj):
         self.lock_list = [Lock() for _ in range(len(scene.mesh_list))]
         return old_scene
 
-    def random_seed(self, s, seed=0xdeadbeef):
+    def random_seed(self, s, seed=0xdeadbeef, rotlr=(-20.0, 20.0), rotud=(-45.0, -5.0)):
         # seeding numpy random state
         halg = hashlib.sha1()
         print(s, end='/')
@@ -109,8 +109,7 @@ class RenderObj(ShowObj):
         print(f'{rs.random():.4f}', end=' ')
 
         # random view angle
-        rx, ry = rs.random_sample(size=2)
-        self.rot_angle = np.array((80 * 2 * (rx - 0.5), -45.0 * ry), dtype=np.float32)
+        self.rot_angle = rs.uniform(*zip(rotlr, rotud))
 
         # random light color
         def rand_color(power=1.0, color_u=0.5, color_v=0.5):
@@ -131,10 +130,12 @@ class RenderObj(ShowObj):
         self.clear_light_source()
         w, d, s = 4, 1, pi / (self.n_lights - 1)
         for i in range(self.n_lights):
-            self.add_light_source(ambient=rand_color(0.2 / self.n_lights),
-                                  diffuse=rand_color(0.8 / self.n_lights),
-                                  specular=rand_color(0.8 / self.n_lights),
-                                  position=rand_pos(w * cos(s * i), 4, 4 - d * sin(s * i)))
+            self.add_light_source(
+                ambient=rand_color(0.2 / self.n_lights),
+                diffuse=rand_color(0.8 / self.n_lights),
+                specular=rand_color(0.8 / self.n_lights),
+                position=rand_pos(w * cos(s * i), 4, 4 - d * sin(s * i))
+            )
 
         # random vertex color
         u, v = 0.6 * rs.random_sample(size=2) + 0.2
@@ -316,6 +317,8 @@ class RenderObj(ShowObj):
         np.save(os.path.join(file_path, f'{im_name}-LABEL.npy'),
                 np.stack([label[perm].astype(np.int32), perm.astype(np.int32)], axis=0))
         imwrite(os.path.join(file_path, f'{im_name}-STENCIL.png'), np.flipud(stencil))
+        m_trans = get_gl_matrix('PROJECTION'), get_gl_matrix('MODELVIEW')
+        np.save(os.path.join(file_path, f'{im_name}-MATRIX.npy'), np.stack(m_trans, axis=0))
 
 
 def main(idx, autogen=False):
