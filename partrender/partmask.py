@@ -116,7 +116,10 @@ class MaskObj(RenderObj):
                 stack.enter_context(self.matrix_trans(self.matched_matrix))
             super(MaskObj, self).draw_model()
 
-    def convert_mesh(self, mesh_list):
+    def convert_mesh(self, mesh_list=None):
+        if mesh_list is None:
+            mesh_list = (mesh for idx, mesh in enumerate(self.scene.mesh_list) if idx not in self.del_set)
+
         with tempfile.TemporaryDirectory() as d:
             filename = os.path.join(d, conf.dblist[self.imageid] + '.obj')
             with open(filename, mode='w') as f:
@@ -150,6 +153,7 @@ class MaskObj(RenderObj):
                 with open(os.path.join(save_dir, 'render-INSNAME.txt'), mode='w') as f:
                     for ins_path, meshes in ins_list:
                         print(ins_path, ','.join(map(str, meshes)), file=f)
+                np.save(os.path.join(save_dir, 'render-GT_PC.npy'), self.convert_mesh())
                 ins_pc = [self.convert_mesh([self.scene.mesh_list[idx - 1] for idx in meshes])
                           for _, meshes in ins_list]
                 np.save(os.path.join(save_dir, 'render-INS_PC.npy'), np.array(ins_pc, dtype=np.object))
