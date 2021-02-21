@@ -1,7 +1,30 @@
+import subprocess
+
+pcl_libs = ["2d", "common", "features", "filters", "geometry",
+            "io", "kdtree", "keypoints", "ml", "octree",
+            # "outofcore", "people", "visualization"
+            "recognition", "registration", "sample_consensus", "search",
+            "segmentation", "stereo", "surface", "tracking"]
+pcl_version = '-1.9'
+pcl_libs = ["pcl_%s%s" % (lib, pcl_version) for lib in pcl_libs]
+
+def pkgconfig(flag):
+    print("pkgconfig-called with flag:", flag)
+    # Equivalent in Python 2.7 (but not 2.6):
+    # subprocess.check_output(['pkg-config', flag] + pcl_libs).split()
+    p = subprocess.Popen(['pkg-config', flag] + pcl_libs, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, _ = p.communicate()
+    # Assume no evil spaces in filenames; unsure how pkg-config would
+    # handle those, anyway.
+    # decode() is required in Python 3. TODO how do know the encoding?
+    return stdout.decode().split()
+
+
 def make_ext(modname, pyxfilename):
     from distutils.extension import Extension
     import pcl
     import os
+    import sys
     from pathlib import Path
 
     ext = Extension(name=modname,
@@ -9,9 +32,11 @@ def make_ext(modname, pyxfilename):
                     include_dirs=[os.path.dirname(pcl.__file__)],
                     extra_compile_args=[
                         '-std=c++14',
-                        '-I{}'.format(Path(__file__).parent.absolute()), '-I/usr/local/include/eigen3',
-                        '-I/usr/local/include/pcl-1.9'],
-                    extra_link_args=['-L/usr/local/lib'],
+                        '-I{}'.format(Path(__file__).parent.absolute()),
+                        '-I{}'.format(os.path.join(sys.prefix, 'include')),
+                        '-I{}'.format(os.path.join(sys.prefix, 'include/pcl-1.9')),
+                        '-I{}'.format(os.path.join(sys.prefix, 'include/eigen3'))],
+                    extra_link_args=['-L/usr/local/lib'] + pkgconfig('--libs-only-l'),
                     language='c++')
     return ext
 

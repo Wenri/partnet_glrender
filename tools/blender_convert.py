@@ -29,12 +29,12 @@ def load_json(obj_id):
     return SimpleNamespace(**{k: _load_s(k) for k in ('result', 'result_after_merging', 'meta')})
 
 
-def traverse(records, base_name=None, obj_set=None):
+def traverse(records, base_name=None, obj_set=None, ins_path=None):
     if obj_set is None:
         obj_set = set()
-    for record in records:
+    for idx, record in enumerate(records):
         cur_name = base_name + '/' + record['name'] if base_name else record['name']
-
+        cur_ins_path = '{}/{}'.format(ins_path, idx) if ins_path is not None else str(idx)
         record_objs = record['objs']
         record_set = set(record_objs)
         assert len(record_set) == len(record_objs) and not record_set.intersection(obj_set), 'Node has duplicate mesh'
@@ -42,24 +42,24 @@ def traverse(records, base_name=None, obj_set=None):
 
         if 'children' in record:
             children_set = set()
-            yield from traverse(record['children'], cur_name, children_set)
+            yield from traverse(record['children'], cur_name, children_set, cur_ins_path)
             assert record_set.issuperset(children_set), 'Children have more mesh than parent'
             record_objs = [o for o in record_objs if o not in children_set]
 
         if record_objs:
-            yield cur_name, record_objs
+            yield cur_ins_path, cur_name, record_objs
 
 
 def load_obj_files(obj):
-    for name, parts in traverse(obj.result_after_merging):
+    for ins_path, name, parts in traverse(obj.result_after_merging):
         for obj_path in parts:
-            yield name, urljoin(DATA_URL, '{}/objs/{}.obj'.format(obj.meta['anno_id'], obj_path))
+            yield ins_path, name, urljoin(DATA_URL, '{}/objs/{}.obj'.format(obj.meta['anno_id'], obj_path))
 
 
 def download_id(obj_id):
     tmpdirname = None
     with ExitStack() as stack:
-        for name, f in load_obj_files(load_json(obj_id)):
+        for _, name, f in load_obj_files(load_json(obj_id)):
             parsef = urlparse(f)
             if parsef.scheme == 'file':
                 outfile = parsef.path

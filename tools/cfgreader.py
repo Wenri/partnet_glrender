@@ -1,5 +1,6 @@
 import configparser
 import os
+from collections import defaultdict
 from types import SimpleNamespace
 
 
@@ -30,19 +31,17 @@ class DBReader(SimpleNamespace):
         if self._idname:
             return self._idname
 
-        def gen_list(str_it):
-            for total, line_s in enumerate(s for s in map(str.strip, str_it) if s):
-                id, cls, file_path = line_s.split('\t')
+        idname_txt = os.path.join(self.data_dir, 'idname.txt')
+        assert os.path.exists(idname_txt)
+        self._idname = defaultdict(list)
+        with open(idname_txt) as f:
+            for total, line_s in enumerate(s for s in map(str.strip, f) if s):
+                id, ins_path, cls, file_path = line_s.split('\t')
                 assert total == int(id)
                 file_path, im_file = os.path.split(file_path)
                 file_path, _ = os.path.split(file_path)
                 im_id = os.path.basename(file_path)
-                yield im_id, cls.strip(), im_file
-
-        idname_txt = os.path.join(self.data_dir, 'idname.txt')
-        assert os.path.exists(idname_txt)
-        with open(idname_txt) as f:
-            self._idname = list(gen_list(f))
+                self._idname[im_id].append((ins_path, cls.strip(), im_file))
 
         return self._idname
 
@@ -58,19 +57,40 @@ class DBReader(SimpleNamespace):
 
         return self._groupset
 
-    def get_cls_from_mtlname(self, name: str):
+    def save_groupset(self, filename):
+        with open(filename, mode='w') as f:
+            for cls_name in self.groupset:
+                print(cls_name, file=f)
+
+    def get_cls_from_mtlname(self, im_id, name):
         prefix, ext = os.path.splitext(name)
         assert prefix == 'Default_OBJ'
         id = int(ext.lstrip('.')) if ext else 0
-        return self.idname[id]
+        im_record = self.idname.get(im_id)
+        if not im_record:
+            raise ValueError(im_id)
+        _, cls, im_file = im_record[id]
+        return im_id, cls, im_file
 
-    def find_group_name(self, cls_name: str):
+    def find_group_name(self, cls_name):
         while cls_name:
             if cls_name in self.groupset:
                 break
             strindex = cls_name.rindex('/')
             cls_name = cls_name[:strindex]
         return cls_name
+
+    def trim_ins_path(self, ins_path, cls_name):
+        while cls_name:
+            if cls_name in self.groupset:
+                return '/'.join(ins_path)
+            ins_path.pop()
+            strindex = cls_name.rfind('/')
+            if strindex > 0:
+                cls_name = cls_name[:strindex]
+            else:
+                raise ValueError(cls_name)
+        raise ValueError()
 
 
 conf = DBReader('config.cfg')

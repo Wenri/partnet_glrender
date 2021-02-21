@@ -8,7 +8,6 @@ from pcl import PointCloud, GeneralizedIterativeClosestPoint
 from scipy.spatial.transform import Rotation as R
 from sklearn.decomposition import PCA
 
-from tools.matlabengine import Minboundbox, ICP_finite
 
 pyximport.install(language_level=3)
 
@@ -76,6 +75,7 @@ class AxisAlign(object):
             self.mean = np.mean(np.asarray(a), axis=0)
 
         if not pca_approx:
+            from tools.matlabengine import Minboundbox
             self._minbbox = Minboundbox(a)
 
     def _eval_results(self):
@@ -178,6 +178,7 @@ class PCMatch(object):
         return transf, fitness
 
     def icpf_match(self, registration='Affine'):
+        from tools.matlabengine import ICP_finite
         ptarray, pmarray = (np.asarray(a) for a in self.arrays)
         estimate, transf = ICP_finite(ptarray, pmarray, Registration=registration)
         print(f'{transf=}')
@@ -248,4 +249,3 @@ class PCMatch(object):
             else:
                 print('Transaction is not better, discarding...')
             self._staged_array = None
-
