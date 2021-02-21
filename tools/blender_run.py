@@ -18,4 +18,6 @@ def import_file(full_name, path):
 
 path = Path(sys.modules[__name__].__file__)
 cvt = import_file('cvt', path.parent.joinpath('blender_convert.py'))
-cvt.convert_partnet('/Volumes/cyber/project/partnet/partnet_blenderexport_tabel')
+
+for d in 'Bag Bed Bottle Bowl Clock Dishwasher Display Door Earphone Faucet Hat Keyboard Knife Lamp Laptop Microwave Mug Refrigerator Scissors StorageFurniture TrashCan Vase'.split():
+    cvt.convert_partnet('/media/data/Research/allexports/{}'.format(d))

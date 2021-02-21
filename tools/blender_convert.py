@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from urllib.parse import urljoin, urlparse
 from urllib.request import urlopen
 
-DATA_URL = 'file:///Volumes/gbcdisk/research/PartNet/data_v0/'
+DATA_URL = 'file:///media/data/Datasets/PartNet/data_v0/'
 SHAPENET_PREFIX = '/Volumes/gbcdisk/research/ShapeNet/'
 
 
