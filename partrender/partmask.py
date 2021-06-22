@@ -40,10 +40,15 @@ def collect_instance_id(im_id, mesh_list):
     return obj_ins_map, del_set
 
 
+def acg(start_char, num):
+    start_ascii = ord(start_char)
+    return (chr(a) for a in range(start_ascii, start_ascii + num))
+
+
 class MaskObj(RenderObj):
     def __init__(self, start_id, auto_generate=False, load_shapenet=True):
         super(MaskObj, self).__init__(start_id, not auto_generate, conf.partmask_dir)
-        self.n_samples = 10
+        self.n_samples = tuple(chain(acg('0', 10), acg('A', 26)))
         self.matched_matrix = None
         self.should_apply_trans = False
         self.should_load_shapenet = load_shapenet
@@ -129,7 +134,7 @@ class MaskObj(RenderObj):
                 for m in mesh_list:
                     for p in m.faces:
                         print("f %d %d %d" % tuple(i + 1 for i in p), file=f)
-            return np.array(self.load_pcd(d, leaf_size=0.001))
+            return np.array(self.load_pcd(d, leaf_size=0.0015))
 
     def __call__(self, *args, **kwargs):
         try:
@@ -154,15 +159,15 @@ class MaskObj(RenderObj):
                     for ins_path, meshes in ins_list:
                         print(ins_path, ','.join(map(str, meshes)), file=f)
                 np.save(os.path.join(save_dir, 'render-GT_PC.npy'), self.convert_mesh())
-                ins_pc = [self.convert_mesh([self.scene.mesh_list[idx - 1] for idx in meshes])
-                          for _, meshes in ins_list]
-                np.save(os.path.join(save_dir, 'render-INS_PC.npy'), np.array(ins_pc, dtype=np.object))
-                for i in range(self.n_samples):
-                    with self.set_render_name('seed_{}'.format(i), wait=True):
+                # ins_pc = [self.convert_mesh([self.scene.mesh_list[idx - 1] for idx in meshes])
+                #           for _, meshes in ins_list]
+                # np.save(os.path.join(save_dir, 'render-INS_PC.npy'), np.array(ins_pc, dtype=np.object))
+                for sn in self.n_samples:
+                    with self.set_render_name('seed_{}'.format(sn), wait=True):
                         self.swap_scene()
-                        self.random_seed('{}-{}'.format(self.imageid, i))
+                        self.random_seed('{}-{}'.format(self.imageid, sn))
                     if self.old_scene:
-                        with self.set_render_name('seed_{}T'.format(i), wait=True):
+                        with self.set_render_name('seed_{}T'.format(sn), wait=True):
                             self.swap_scene()
 
                 print('Switching...')

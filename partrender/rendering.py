@@ -96,7 +96,7 @@ class RenderObj(ShowObj):
         self.lock_list = [Lock() for _ in range(len(scene.mesh_list))]
         return old_scene
 
-    def random_seed(self, s, seed=0xdeadbeef, rotlr=(-20.0, 20.0), rotud=(-45.0, -5.0)):
+    def random_seed(self, s, seed=0xdeadbeef, rotlr=(-180.0, 180.0), rotud=(-55.0, 0.0)):
         # seeding numpy random state
         halg = hashlib.sha1()
         print(s, end='/')
