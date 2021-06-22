@@ -10,8 +10,8 @@ from types import SimpleNamespace
 from urllib.parse import urljoin, urlparse
 from urllib.request import urlopen
 
-DATA_URL = 'file:///gbcdisk/research/PartNet/data_v0/'
-SHAPENET_PREFIX = '/Volumes/mybookduo/research/ShapeNet/'
+DATA_URL = 'file:///media/data/Datasets/PartNet/data_v0/'
+SHAPENET_PREFIX = '/Volumes/gbcdisk/research/ShapeNet/'
 
 
 def path_split_all(path):
