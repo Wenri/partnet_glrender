@@ -11,12 +11,10 @@ from pathlib import Path
 from threading import Thread
 
 import numpy as np
-import pcl
 from more_itertools import first
 
 from partrender.rendering import RenderObj
 from ptcloud.pcmatch import PCMatch
-from ptcloud.pointcloud import cvt_obj2pcd
 from tools.blender_convert import ShapenetFileHelper
 from tools.blender_convert import load_obj_files, load_json
 from tools.cfgreader import conf
@@ -67,15 +65,6 @@ class MaskObj(RenderObj):
             self.old_scene = self.update_scene(self.old_scene)
             if toggle_trans:
                 self.should_apply_trans = not self.should_apply_trans
-
-    def load_pcd(self, base_dir, n_samples=20000, leaf_size=0.001):
-        im_id = conf.dblist[self.imageid]
-        imfile = os.path.join(base_dir, "{}.obj".format(im_id))
-        with tempfile.TemporaryDirectory() as tempdirname:
-            ret = cvt_obj2pcd(imfile, tempdirname, n_samples=n_samples, leaf_size=leaf_size)
-            if ret.stderr:
-                print(f'cvt_obj2pcd {os.path.basename(base_dir)} {im_id}: ', ret.stderr, file=sys.stderr)
-            return pcl.load(os.path.join(tempdirname, '{}.pcd'.format(im_id)))
 
     def calc_apply_matched_matrix(self):
         partnet_pcd = self.load_pcd(conf.data_dir, leaf_size=0.002)

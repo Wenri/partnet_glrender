@@ -1,17 +1,17 @@
 import configparser
 import os
+import sys
 from collections import defaultdict
+from pathlib import Path
 from types import SimpleNamespace
 
 
-class DBReader(SimpleNamespace):
-    def __init__(self, configfile):
-        cfg = configparser.ConfigParser()
-        cfg.read_file(open(configfile))
+class DEFAULTParser(SimpleNamespace):
+    def __init__(self, cfg_def):
+        super().__init__(**cfg_def)
         self._idname = None
         self._dblist = None
         self._groupset = None
-        super().__init__(**cfg.defaults())
 
     @property
     def dblist(self):
@@ -91,6 +91,57 @@ class DBReader(SimpleNamespace):
             else:
                 raise ValueError(cls_name)
         raise ValueError()
+
+
+class SHAPENETParser(SimpleNamespace):
+    def __init__(self, cfg_def):
+        super().__init__(**cfg_def)
+        self._dblist = None
+
+    @property
+    def dblist(self):
+        if self._dblist:
+            return self._dblist
+
+        dblist = []
+        with os.scandir(self.partoccu_dir) as it:
+            for cat in it:
+                if not cat.is_dir():
+                    continue
+                with os.scandir(cat) as catit:
+                    dblist += [Path(entry).parts[-2:] for entry in catit if
+                               not entry.name.startswith('.') and entry.is_dir()]
+
+        self._dblist = [Path(*p, 'model') for p in dblist]
+        return self._dblist
+
+
+def get_section_factor(sec):
+    return globals()[f'{sec}Parser']
+
+
+class DBReader:
+    def __init__(self, configfile):
+        self.cfg = configparser.ConfigParser()
+        with open(configfile) as f:
+            self.cfg.read_file(f)
+        self.cfg_set = {s for s in self.cfg.sections()}
+        self.cfg_set.add(self.cfg.default_section)
+        self.cfg_def_str = self.cfg.default_section
+        self.sections = {self.cfg.default_section: get_section_factor(self.cfg.default_section)(self.cfg.defaults())}
+
+    def get_section(self, sec):
+        section = self.sections.get(sec)
+        if not section:
+            section = get_section_factor(sec)({k: v for k, v in self.cfg.items(sec)})
+            self.sections[sec] = section
+        return section
+
+    def __getattr__(self, item):
+        if item in self.cfg_set:
+            return self.get_section(item)
+
+        return getattr(self.get_section(self.cfg_def_str), item)
 
 
 conf = DBReader('config.cfg')

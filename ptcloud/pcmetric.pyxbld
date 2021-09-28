@@ -38,6 +38,7 @@ def make_ext(modname, pyxfilename):
                         '-I{}'.format(os.path.join(sys.prefix, 'include/eigen3'))],
                     extra_link_args=['-L/usr/local/lib'] + pkgconfig('--libs-only-l'),
                     language='c++')
+
     return ext
 
 

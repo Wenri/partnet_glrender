@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import numpy as np
 import pcl
 
-from ptcloud.pcmatch import PCMatch, pclsimilarity, arr2pt
+from ptcloud.pcmatch import PCMatch, arr2pt
 from tools import blender_convert
 from tools.blender_convert import download_id
 from tools.cfgreader import conf
@@ -89,7 +89,8 @@ def filter_region(ref, a, margin=0.05):
 
 
 def eval_id(im_id, draw_plot=True, log_file=sys.stdout):
-    from tools.matlabengine import MatEng
+    from ..tools.matlabengine import MatEng
+    from .pcmetric import pclsimilarity
     pcm = PCMatch(*cvt_load_pcd(im_id))
 
     MatEng.start(count=2)

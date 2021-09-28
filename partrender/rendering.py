@@ -3,22 +3,26 @@ import logging
 import operator
 import os
 import sys
+import tempfile
 from contextlib import contextmanager, ExitStack, suppress
 from ctypes import POINTER
 from functools import partial, reduce
 from itertools import chain
 from math import cos, sin, pi
+from pathlib import Path
 from threading import Lock, Condition, Event
 from typing import Final
 
 import glfw
 import numpy as np
+import pcl
 from imageio import imwrite
 from pyglet.gl import *
 from pywavefront import Wavefront
 from pywavefront.visualization import gl_light, bind_texture
 
 from partrender.showobj import ShowObj, get_gl_matrix
+from ptcloud.pointcloud import cvt_obj2pcd
 from tools.cfgreader import conf
 
 
@@ -85,11 +89,20 @@ class RenderObj(ShowObj):
     def load_image(self, base_dir):
         im_id = conf.dblist[self.imageid]
         im_file = os.path.join(base_dir, "{}.obj".format(im_id))
-        scene = Wavefront(im_file, collect_faces=True)
+        scene = Wavefront(im_file, collect_faces=True, create_materials=True)
 
         for material in scene.materials.values():
             material.ambient = [0.2, 0.2, 0.2, 1.0]
         return scene
+
+    def load_pcd(self, base_dir, n_samples=20000, leaf_size=0.001):
+        im_id = conf.dblist[self.imageid]
+        imfile = Path(base_dir, "{}.obj".format(im_id))
+        with tempfile.TemporaryDirectory() as tempdirname:
+            ret = cvt_obj2pcd(imfile, tempdirname, n_samples=n_samples, leaf_size=leaf_size)
+            if ret.stderr:
+                print(f'cvt_obj2pcd {os.path.basename(base_dir)} {im_id}: ', ret.stderr, file=sys.stderr)
+            return pcl.load(os.path.join(tempdirname, imfile.with_suffix('.pcd').name))
 
     def update_scene(self, scene):
         old_scene = super(RenderObj, self).update_scene(scene)
@@ -137,27 +150,6 @@ class RenderObj(ShowObj):
                 position=rand_pos(w * cos(s * i), 4, 4 - d * sin(s * i))
             )
 
-        # random vertex color
-        u, v = 0.6 * rs.random_sample(size=2) + 0.2
-        diffuse = yuv2rgb(np.array([0.5, u, v]))
-        diffuse = rgb2yuv(np.clip(diffuse, 0, 1))
-
-        def change_mtl(idx, material):
-            a = np.array(material.vertices, dtype=np.float32).reshape([-1, 6])
-            n_vtx, _ = a.shape
-            with self.lock_list[idx]:
-                color = rs.standard_normal(size=(n_vtx, 3))
-                alpha = np.ones(shape=(n_vtx, 1), dtype=np.float32)
-                color *= np.array([0.01, 0.05, 0.05])
-                color += diffuse
-                color = np.clip(yuv2rgb(color), 0, 1, dtype=np.float32)
-                material.gl_floats = np.concatenate((color, alpha, a), axis=1).ctypes
-                material.triangle_count = n_vtx
-                material.vertex_format = 'C4F_N3F_V3F'
-
-        for i, mesh in enumerate(self.scene.mesh_list):
-            for m in mesh.materials:
-                change_mtl(i, m)
 
     def draw_material(self, idx, material, face=GL_FRONT_AND_BACK, lighting_enabled=True, textures_enabled=True):
         """Draw a single material"""
@@ -270,7 +262,7 @@ class RenderObj(ShowObj):
 
     def free_texture(self):
         for mtl in chain.from_iterable(mesh.materials for mesh in self.scene.mesh_list):
-            if mtl.texture:
+            if mtl.texture and hasattr(mtl.texture, 'image'):
                 del mtl.texture.image
 
     def fast_switching(self):

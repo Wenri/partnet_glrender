@@ -8,10 +8,7 @@ from pcl import PointCloud, GeneralizedIterativeClosestPoint
 from scipy.spatial.transform import Rotation as R
 from sklearn.decomposition import PCA
 
-
 pyximport.install(language_level=3)
-
-from ptcloud.pcmetric import pclsimilarity
 
 
 class Error(Exception):
@@ -178,7 +175,7 @@ class PCMatch(object):
         return transf, fitness
 
     def icpf_match(self, registration='Affine'):
-        from tools.matlabengine import ICP_finite
+        from ..tools.matlabengine import ICP_finite
         ptarray, pmarray = (np.asarray(a) for a in self.arrays)
         estimate, transf = ICP_finite(ptarray, pmarray, Registration=registration)
         print(f'{transf=}')
@@ -226,6 +223,8 @@ class PCMatch(object):
         return self.similarity()
 
     def similarity(self):
+        from .pcmetric import pclsimilarity
+
         clouds = (arr2pt(a) for a in self.arrays)
         return pclsimilarity(*clouds)
 
