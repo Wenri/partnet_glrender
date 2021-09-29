@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from ctypes import POINTER
 from functools import partial
 from typing import Final
 
@@ -161,6 +162,18 @@ class ShowObj(object):
     def draw_material(self, idx, material, face=GL_FRONT_AND_BACK, lighting_enabled=True, textures_enabled=True):
         draw_material(material, face, lighting_enabled, textures_enabled)
 
+    @contextmanager
+    def matrix_trans(self, matrix=None, scale=None, translate=None):
+        glPushMatrix()
+        if translate is not None:
+            glTranslated(*translate)
+        if scale is not None:
+            glScaled(*scale)
+        if matrix is not None:
+            glMultMatrixd(matrix.ctypes.data_as(POINTER(GLdouble)))
+        yield
+        glPopMatrix()
+
     def cur_sel(self):
         [cur_idx] = self._cur_sel_idx
         return cur_idx - 1 if cur_idx else None
@@ -307,7 +320,8 @@ class ShowObj(object):
             glfw.swap_buffers(window)
 
             # Poll for and process events
-            glfw.wait_events()
+            # glfw.wait_events_timeout(1)
+            glfw.poll_events()
 
             if glfw.window_should_close(window):
                 self.window_closing(window)

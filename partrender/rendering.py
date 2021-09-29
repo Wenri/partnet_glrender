@@ -55,6 +55,17 @@ def yuv2rgb(yuv):
     return rgb
 
 
+def get_bbox(vertices):
+    bb_min = np.min(vertices, axis=0)
+    bb_max = np.max(vertices, axis=0)
+    return bb_min, bb_max
+
+
+def acg(start_char, num):
+    start_ascii = ord(start_char)
+    return (chr(a) for a in range(start_ascii, start_ascii + num))
+
+
 class RenderObj(ShowObj):
     _VERTEX_FORMATS: Final = {
         'V3F': GL_V3F,
@@ -150,7 +161,6 @@ class RenderObj(ShowObj):
                 position=rand_pos(w * cos(s * i), 4, 4 - d * sin(s * i))
             )
 
-
     def draw_material(self, idx, material, face=GL_FRONT_AND_BACK, lighting_enabled=True, textures_enabled=True):
         """Draw a single material"""
 
@@ -217,13 +227,6 @@ class RenderObj(ShowObj):
         self.render_name = None if self.view_mode else 'render'
         if self.view_mode:
             self.render_ack.set()
-
-    @contextmanager
-    def matrix_trans(self, matrix: np.ndarray):
-        glPushMatrix()
-        glMultMatrixd(matrix.ctypes.data_as(POINTER(GLdouble)))
-        yield
-        glPopMatrix()
 
     @contextmanager
     def set_render_name(self, render_name, wait=False):

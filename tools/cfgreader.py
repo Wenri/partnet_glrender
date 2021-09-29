@@ -1,6 +1,5 @@
 import configparser
 import os
-import sys
 from collections import defaultdict
 from pathlib import Path
 from types import SimpleNamespace
@@ -94,6 +93,10 @@ class DEFAULTParser(SimpleNamespace):
 
 
 class SHAPENETParser(SimpleNamespace):
+    chair_cat = {"02738535", "03002210", "03002711", "03260849", "03376595", "03632729", "03649674", "04099969",
+                 "04331277", "04373704", "04576002", "20000015", "20000016", "20000018", "20000019", "20000020",
+                 "20000021", "20000022", "20000023", "20000024", "20000025", "20000026", "20000027", "03001627"}
+
     def __init__(self, cfg_def):
         super().__init__(**cfg_def)
         self._dblist = None
@@ -106,6 +109,7 @@ class SHAPENETParser(SimpleNamespace):
         dblist = []
         with os.scandir(self.partoccu_dir) as it:
             for cat in it:
+                # if not cat.is_dir() or cat.name not in self.chair_cat:
                 if not cat.is_dir():
                     continue
                 with os.scandir(cat) as catit:

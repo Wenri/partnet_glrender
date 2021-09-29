@@ -13,7 +13,7 @@ from threading import Thread
 import numpy as np
 from more_itertools import first
 
-from partrender.rendering import RenderObj
+from partrender.rendering import RenderObj, acg
 from ptcloud.pcmatch import PCMatch
 from tools.blender_convert import ShapenetFileHelper
 from tools.blender_convert import load_obj_files, load_json
@@ -36,11 +36,6 @@ def collect_instance_id(im_id, mesh_list):
             del_set.add(rlookup[obj_name] - 1)
 
     return obj_ins_map, del_set
-
-
-def acg(start_char, num):
-    start_ascii = ord(start_char)
-    return (chr(a) for a in range(start_ascii, start_ascii + num))
 
 
 class MaskObj(RenderObj):
