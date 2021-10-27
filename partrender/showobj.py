@@ -1,4 +1,4 @@
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from ctypes import POINTER
 from functools import partial
 from typing import Final
@@ -262,33 +262,36 @@ class ShowObj(object):
     def _setup_window(self):
         # Initialize the library
         glfw.ERROR_REPORTING = 'warn'
-        if not glfw.init():
-            raise RuntimeError('An error occurred when calling glfw.init')
 
-        for monitor in glfw.get_monitors():
-            print(f"'{glfw.get_monitor_name(monitor).decode()}' {glfw.get_monitor_content_scale(monitor)}", end='. ')
-        print(f"GLFW Ver {glfw.get_version_string().decode()}.")
+        with ExitStack() as stack:
+            stack.callback(glfw.terminate)
 
-        self._hint_gl_version()
+            if not glfw.init():
+                raise RuntimeError('An error occurred when calling glfw.init')
 
-        # Create a windowed mode window and its OpenGL context
-        window = glfw.create_window(1280, 800, self.title, None, None)
-        if not window:
-            raise RuntimeError('An error occurred when creating window')
+            for monitor in glfw.get_monitors():
+                print(f"'{glfw.get_monitor_name(monitor).decode()}' {glfw.get_monitor_content_scale(monitor)}",
+                      end='. ')
+            print(f"GLFW Ver {glfw.get_version_string().decode()}.")
 
-        # Make the window's context current
-        glfw.make_context_current(window)
+            self._hint_gl_version()
 
-        glfw.set_mouse_button_callback(window, self.mouse_button_fun)
-        glfw.set_cursor_pos_callback(window, self.cursor_pos_fun)
-        glfw.set_scroll_callback(window, self.scroll_fun)
-        glfw.set_key_callback(window, self.key_fun)
-        glfw.set_window_size_callback(window, self.window_size_fun)
-        glfw.set_window_refresh_callback(window, self._update_gl_variable)
+            # Create a windowed mode window and its OpenGL context
+            window = glfw.create_window(1280, 800, self.title, None, None)
+            if not window:
+                raise RuntimeError('An error occurred when creating window')
 
-        yield window
+            # Make the window's context current
+            glfw.make_context_current(window)
 
-        glfw.terminate()
+            glfw.set_mouse_button_callback(window, self.mouse_button_fun)
+            glfw.set_cursor_pos_callback(window, self.cursor_pos_fun)
+            glfw.set_scroll_callback(window, self.scroll_fun)
+            glfw.set_key_callback(window, self.key_fun)
+            glfw.set_window_size_callback(window, self.window_size_fun)
+            glfw.set_window_refresh_callback(window, self._update_gl_variable)
+
+            yield window
 
     def _update_gl_variable(self, window):
         # max_lights

@@ -1,5 +1,6 @@
 import faulthandler
 import os
+import sys
 import tempfile
 from collections import namedtuple
 from itertools import chain
@@ -16,7 +17,6 @@ class ShapeNetObj(RenderObj):
     def __init__(self, start_id, auto_generate=False):
         super(ShapeNetObj, self).__init__(start_id, not auto_generate, conf.partoccu_dir)
         self.n_samples = tuple(chain(acg('0', 10), acg('A', 26)))
-        self.model_id = 0
         self.target_pc = None
         self.target_occ = None
         self.scale_inv = None
@@ -49,8 +49,8 @@ class ShapeNetObj(RenderObj):
 
         # Scales all dimensions equally.
         scale = total_size / (1 - padding)
-        assert np.allclose(scale, self.target_pc.scale) and np.allclose(centers, self.target_pc.loc)
-        assert np.allclose(scale, self.target_occ.scale) and np.allclose(centers, self.target_occ.loc)
+        # assert np.allclose(scale, self.target_pc.scale) and np.allclose(centers, self.target_pc.loc)
+        # assert np.allclose(scale, self.target_occ.scale) and np.allclose(centers, self.target_occ.loc)
 
         Thread(target=self, daemon=True).start()
 
@@ -80,7 +80,7 @@ class ShapeNetObj(RenderObj):
     def __call__(self, *args, **kwargs):
         try:
             im_id = conf.dblist[self.imageid]
-            print('rendering:', self.imageid, im_id, self.model_id, end=' ')
+            print('rendering:', self.imageid, im_id, end=' ')
 
             if not self.view_mode:
                 save_dir = os.path.join(self.render_dir, im_id)
@@ -93,7 +93,7 @@ class ShapeNetObj(RenderObj):
                     with self.set_render_name('seed_{}'.format(sn), wait=True):
                         self.random_seed('{}-{}'.format(self.imageid, sn))
 
-                print('Switching...')
+                print('...', end='')
                 self.set_fast_switching()
             else:
                 self.render_ack.wait()
@@ -107,8 +107,16 @@ def main(idx, autogen=True):
     faulthandler.enable()
     conf.cfg_def_str = 'SHAPENET'
     show = ShapeNetObj(idx, autogen)
-    show.show_obj()
+    while True:
+        try:
+            return show.show_obj()
+        except ValueError as e:
+            print(f'Error when rendering {show.imageid}: ', e, file=sys.stderr)
+            show = ShapeNetObj(show.imageid + 1, autogen)
 
 
 if __name__ == '__main__':
-    main(0, autogen=True)
+    # 1864 vertex format
+    # 2370
+    # 22154 Out of memory
+    main(22155, autogen=True)

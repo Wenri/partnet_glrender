@@ -123,14 +123,14 @@ class RenderObj(ShowObj):
     def random_seed(self, s, seed=0xdeadbeef, rotlr=(-180.0, 180.0), rotud=(-55.0, 0.0)):
         # seeding numpy random state
         halg = hashlib.sha1()
-        print(s, end='/')
+        print(s[-1], end='/')
         s = 'Random seed {} with {} lights'.format(s, self.n_lights)
         halg.update(s.encode())
         s = halg.digest()
         s = reduce(operator.xor, (int.from_bytes(s[i * 4:i * 4 + 4], byteorder='little') for i in range(len(s) // 4)))
         s ^= seed
         rs = np.random.RandomState(seed=s)
-        print(f'{rs.random():.4f}', end=' ')
+        # print(f'{rs.random():.4f}', end=' ')
 
         # random view angle
         self.rot_angle = rs.uniform(*zip(rotlr, rotud))
